@@ -31,6 +31,8 @@ const INDENT = ['pl-1.5', 'pl-5', 'pl-9', 'pl-[3.25rem]'];
 
 interface TreeProps {
   nodes: TreeNode[];
+  /** Accessible name of the tree, e.g. "Workspace" or "Shared with me". */
+  label: string;
   selectedListId: ID | null;
   taskCounts: Record<ID, number>;
   onSelectList: (listId: ID) => void;
@@ -45,7 +47,7 @@ function findNode(nodes: TreeNode[], id: ID): TreeNode | undefined {
   return undefined;
 }
 
-export function SidebarTree({ nodes, selectedListId, taskCounts, onSelectList }: TreeProps) {
+export function SidebarTree({ nodes, label, selectedListId, taskCounts, onSelectList }: TreeProps) {
   const isAdmin = useIsAdmin();
   const { reorderContainer } = useActions();
   const [collapsed, setCollapsed] = useState<Set<ID>>(() => new Set());
@@ -88,6 +90,7 @@ export function SidebarTree({ nodes, selectedListId, taskCounts, onSelectList }:
     >
       <Branch
         nodes={nodes}
+        label={label}
         depth={0}
         parentId="root"
         isAdmin={isAdmin}
@@ -124,7 +127,7 @@ function Branch(props: BranchProps) {
     <SortableContext items={ids} strategy={verticalListSortingStrategy}>
       <ul
         role={props.depth === 0 ? 'tree' : 'group'}
-        aria-label={props.depth === 0 ? 'Workspace' : undefined}
+        aria-label={props.depth === 0 ? props.label : undefined}
         className="space-y-px"
       >
         {props.nodes.map((node) => (
@@ -136,7 +139,7 @@ function Branch(props: BranchProps) {
 }
 
 function SortableItem({ node, siblings, ...props }: BranchProps & { node: TreeNode; siblings: ID[] }) {
-  const { container, children, restricted } = node;
+  const { container, children } = node;
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: container.id,
     data: { parentId: props.parentId, siblings },
@@ -164,7 +167,7 @@ function SortableItem({ node, siblings, ...props }: BranchProps & { node: TreeNo
         isAdmin={props.isAdmin}
         count={props.taskCounts[container.id]}
         onToggle={() => props.onToggle(container.id)}
-        onSelect={() => (isList && !restricted ? props.onSelectList(container.id) : props.onToggle(container.id))}
+        onSelect={() => (isList ? props.onSelectList(container.id) : props.onToggle(container.id))}
         dragHandle={
           props.isAdmin ? (
             <button
@@ -186,7 +189,7 @@ function SortableItem({ node, siblings, ...props }: BranchProps & { node: TreeNo
       {!isList && open && children.length > 0 && (
         <Branch {...props} nodes={children} depth={props.depth + 1} parentId={container.id} />
       )}
-      {!isList && open && children.length === 0 && !restricted && (
+      {!isList && open && children.length === 0 && (
         <p className={cn('py-1 text-xs italic text-ink-faint', INDENT[props.depth + 1], 'ml-6')}>
           {container.type === 'space' ? 'No folders yet' : 'No lists yet'}
         </p>
@@ -231,7 +234,7 @@ function Row({
   onSelect: () => void;
   dragHandle: ReactNode;
 }) {
-  const { container, restricted } = node;
+  const { container } = node;
   const { renameContainer } = useActions();
   const [editing, setEditing] = useState(false);
   const isList = container.type === 'list';
@@ -249,7 +252,6 @@ function Row({
         'group relative flex h-8 items-center gap-1.5 rounded-control pr-1 text-sm transition-colors',
         INDENT[depth],
         selected ? 'bg-brand-50 text-brand-800' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
-        restricted && 'text-ink-subtle',
       )}
     >
       {dragHandle}
@@ -284,19 +286,18 @@ function Row({
           onKeyDown={onKeyDown}
           onDoubleClick={() => isAdmin && setEditing(true)}
           aria-current={selected ? 'page' : undefined}
-          title={restricted ? `${container.name} — you only have access to some items inside` : container.name}
+          title={container.name}
           className={cn(
             'flex min-w-0 flex-1 items-center gap-2 rounded py-1 text-left',
             FOCUS_RING,
             (container.type === 'space' || selected) && 'font-medium',
-            container.type === 'space' && !selected && !restricted && 'text-ink',
-            restricted && 'cursor-default text-ink-subtle',
+            container.type === 'space' && !selected && 'text-ink',
           )}
         >
           <TypeIcon container={container} open={open} />
           <span className="truncate">{container.name}</span>
-          {(container.visibility === 'private' || restricted) && (
-            <Lock className="h-3 w-3 shrink-0 text-ink-faint" aria-label={restricted ? 'Restricted' : 'Private'} />
+          {container.visibility === 'private' && (
+            <Lock className="h-3 w-3 shrink-0 text-ink-faint" aria-label="Private" />
           )}
         </button>
       )}
@@ -313,32 +314,31 @@ function Row({
               {count}
             </span>
           )}
-          {!restricted && (
-            <div className="hidden items-center group-focus-within:flex group-hover:flex has-[[data-open]]:flex">
-              <ContainerMenu container={container} isAdmin={isAdmin} onRename={() => setEditing(true)} />
-              {canAddChild && isAdmin && (
-                <button
-                  type="button"
-                  aria-label={`Add ${CHILD_TYPE[container.type]} to ${container.name}`}
-                  title={`New ${CHILD_TYPE[container.type]}`}
-                  onClick={() => uiStore.getState().openDialog({ kind: 'create', parentId: container.id })}
-                  className={cn(
-                    'flex h-6 w-6 items-center justify-center rounded text-ink-subtle hover:bg-line hover:text-ink',
-                    FOCUS_RING,
-                  )}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          )}
+          <div className="hidden items-center group-focus-within:flex group-hover:flex has-[[data-open]]:flex">
+            <ContainerMenu container={container} isAdmin={isAdmin} onRename={() => setEditing(true)} />
+            {canAddChild && isAdmin && (
+              <button
+                type="button"
+                aria-label={`Add ${CHILD_TYPE[container.type]} to ${container.name}`}
+                title={`New ${CHILD_TYPE[container.type]}`}
+                onClick={() => uiStore.getState().openDialog({ kind: 'create', parentId: container.id })}
+                className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded text-ink-subtle hover:bg-line hover:text-ink',
+                  FOCUS_RING,
+                )}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function RenameInput({ initial, onDone }: { initial: string; onDone: (name: string | null) => void }) {
+/** Inline rename field: Enter or blur saves, Escape cancels (`onDone(null)`). */
+export function RenameInput({ initial, onDone }: { initial: string; onDone: (name: string | null) => void }) {
   const ref = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState(initial);
   const done = useRef(false);

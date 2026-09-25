@@ -45,15 +45,15 @@ Archived containers (`isArchivedPath`) are never viewable, even by admins. Their
 2. **Collections filter; single resources guard.** A list of things (search results, activity, "move to list" options) silently drops what the user can't see. Opening one specific thing returns a 403.
 3. **No leaks.** 403 screens, toasts and breadcrumbs must not include the forbidden list's name or contents. `TopBar` only builds breadcrumbs for lists the viewer can open.
 4. **User switch must re-evaluate everything.** Selectors take `userId` as an argument and are memoized on it. Never cache access decisions in component state.
-5. Tree nodes that are only visible because something inside them is shared come back with `restricted: true` (path-only). They can't be opened or managed.
+5. **Never show hidden ancestors.** The tree (`selectVisibleTree`) contains only visible nodes. Something shared inside a hidden container comes from `selectSharedWithMe` and is rendered under "Shared with me". Breadcrumbs use `visibleAncestorsOf`, never `ancestorsOf`.
 
 ## Seed scenario (used by tests; keep it working)
 
-| User           | Sees                                                                                                       | Why                                                                                    |
-| -------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Alice (admin)  | everything except the archived Q1 Retro                                                                    | admin                                                                                  |
-| Bob (member)   | Backlog, Sprint 14, Security Audit, and Launch Content (with Marketing › Brand Refresh as restricted path) | public inheritance; `allow` on the private Security Audit; `allow` on Launch Content   |
-| Carol (member) | Backlog, Campaigns, Launch Content                                                                         | `allow` on the private Marketing space; `deny` on Sprint 14; Security Audit is private |
+| User           | Sees                                                                                                    | Why                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Alice (admin)  | everything except the archived Q1 Retro                                                                 | admin                                                                                  |
+| Bob (member)   | Backlog, Sprint 14, Security Audit, and Launch Content (under "Shared with me"; Marketing stays hidden) | public inheritance; `allow` on the private Security Audit; `allow` on Launch Content   |
+| Carol (member) | Backlog, Campaigns, Launch Content                                                                      | `allow` on the private Marketing space; `deny` on Sprint 14; Security Audit is private |
 
 ## Extending the model
 

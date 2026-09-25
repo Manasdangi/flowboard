@@ -12,7 +12,7 @@
  * └── Marketing (private space)            — Carol: ALLOW
  *     └── Brand Refresh (folder)
  *         ├── Campaigns        public (inherits Marketing's privacy)
- *         └── Launch Content   public      — Bob: ALLOW (shows restricted path)
+ *         └── Launch Content   public      — Bob: ALLOW (appears in his "Shared with me")
  */
 import type {
   Container,

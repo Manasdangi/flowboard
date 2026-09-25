@@ -31,7 +31,7 @@ More commands, the pre-commit hook and editor setup are in [11. Development](#11
 
 1. As **Alice (admin)**, the sidebar shows everything, including the private **Marketing** space and the private **Security Audit** list.
 2. Open **Marketing › Brand Refresh › Campaigns**.
-3. Switch to **Bob** with the **"Viewing as"** menu (top right). The board becomes a **403** screen straight away, and Campaigns disappears from the tree.
+3. Switch to **Bob** with the **"Viewing as"** menu (top right). The board becomes a **403** screen straight away, and the whole Marketing space disappears from his tree. The one list shared with him inside it, **Launch Content**, appears on its own under **Shared with me**.
 4. Bob can still open **Security Audit**. It's private, but explicitly shared with him ([why](#who-can-see-what)).
 5. Press **⌘K** and search "launch". Bob gets no Campaigns results, because search is permission-filtered too.
 6. Open the **⋯** menu on any tree item and click **Archive**. It's marked **🔒 Admins only**, and the store refuses with a **"Permission denied"** toast. Nothing changes.
@@ -107,14 +107,14 @@ flowchart LR
 
 ### Key terms
 
-| Term                 | Meaning                                                                                                              |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **Container**        | Any node of the tree: workspace, space, folder or list. Only lists hold tasks.                                       |
-| **Status category**  | What a status _means_ to the app: `todo`, `in_progress` or `done`. The name ("In review") is just a label.           |
-| **Grant**            | A per-user rule on a container: `allow` or `deny`.                                                                   |
-| **Public / Private** | Public is visible to members by default (opt-out). Private is hidden unless explicitly allowed (opt-in).             |
-| **Restricted node**  | A greyed, locked tree item. You can't open it, but it's shown because something _inside_ it is shared with you.      |
-| **`Result`**         | What every store call returns: `{ data }` or `{ error: { code, message } }`. A code of `FORBIDDEN` is the app's 403. |
+| Term                 | Meaning                                                                                                                                |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Container**        | Any node of the tree: workspace, space, folder or list. Only lists hold tasks.                                                         |
+| **Status category**  | What a status _means_ to the app: `todo`, `in_progress` or `done`. The name ("In review") is just a label.                             |
+| **Grant**            | A per-user rule on a container: `allow` or `deny`.                                                                                     |
+| **Public / Private** | Public is visible to members by default (opt-out). Private is hidden unless explicitly allowed (opt-in).                               |
+| **Shared with me**   | A sidebar section listing items shared with you inside containers you can't see. The hidden parents are never shown, not even by name. |
+| **`Result`**         | What every store call returns: `{ data }` or `{ error: { code, message } }`. A code of `FORBIDDEN` is the app's 403.                   |
 
 ### Start reading here
 
@@ -167,7 +167,7 @@ Grant     { id, resourceId, userId, mode: 'allow'|'deny' }
 User      { id, name, email, role: 'admin'|'member', title, avatarColor }
 ```
 
-- **Hierarchy.** `CHILD_TYPE` enforces workspace → space → folder → list. Creating a child under a list returns `VALIDATION`, because lists hold tasks only.
+- **Hierarchy.** `CHILD_TYPE` enforces workspace → space → folder → list. Creating a child under a list returns `VALIDATION`, because lists hold tasks only. Spaces, folders and lists support create, rename, reorder and archive. The workspace can be renamed by admins from the sidebar header; there's only one, so it can't be created or archived.
 - **Positions** are whole numbers spaced by 1000. A reorder or drop re-numbers only the affected column or group of siblings, which keeps the order predictable. A task's `position` is its order within its status column.
 - **Statuses** belong to a list, and a task can only use its own list's statuses. When a task moves to another list, its status is matched by **same name → same category → first status**, and its subtasks move with it.
 - **Assignees.** A task can have any number of assignees (`assigneeIds: ID[]`); duplicates are collapsed and unknown user ids return `VALIDATION`. The drawer's picker only suggests people who can see the list, so you can't assign someone who couldn't open the task.
@@ -203,15 +203,15 @@ The brief defines rules 1–3. Inheritance (rule 4) and "nearest rule wins" are 
 
 ### Where the rules are enforced: in the store, not the UI
 
-| Layer                                               | What it does                                                                                                                                       |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `selectVisibleTree`                                 | Returns only nodes the user can see, plus **restricted** ancestors needed to reach something shared deeper down. Restricted nodes can't be opened. |
-| `selectBoard`, `selectListPage`, `selectTaskDetail` | Return `{ error: { code: 'FORBIDDEN' } }` instead of data, shown as the 403 screen or a 403 panel inside the drawer.                               |
-| `searchTasks`                                       | Only searches lists the user can open.                                                                                                             |
-| Every task mutation                                 | `guardViewList` / `guardTask` run first. Moving a task to another list checks **both** lists.                                                      |
-| Every container, status or grant mutation           | `guardManage`: admins only.                                                                                                                        |
-| Assignee picker                                     | `usersWithAccess(listId)`: you can't assign someone who can't see the list.                                                                        |
-| Breadcrumbs                                         | Only built for lists the viewer can open, so a forbidden list's name never appears.                                                                |
+| Layer                                               | What it does                                                                                                                              |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `selectVisibleTree` / `selectSharedWithMe`          | Return only nodes the user can see. Anything shared inside a hidden container goes to **Shared with me**, so hidden parents never appear. |
+| `selectBoard`, `selectListPage`, `selectTaskDetail` | Return `{ error: { code: 'FORBIDDEN' } }` instead of data, shown as the 403 screen or a 403 panel inside the drawer.                      |
+| `searchTasks`                                       | Only searches lists the user can open.                                                                                                    |
+| Every task mutation                                 | `guardViewList` / `guardTask` run first. Moving a task to another list checks **both** lists.                                             |
+| Every container, status or grant mutation           | `guardManage`: admins only.                                                                                                               |
+| Assignee picker                                     | `usersWithAccess(listId)`: you can't assign someone who can't see the list.                                                               |
+| Breadcrumbs (top bar and task drawer)               | `visibleAncestorsOf` skips ancestors the viewer can't see, so hidden container names never appear.                                        |
 
 **The UI never fakes a permission check:**
 
@@ -248,15 +248,15 @@ Two libraries also set inline positioning themselves (I didn't write it): dnd-ki
 
 ## 8. Testing
 
-| Kind          | File                             | Tests | What it covers                                                                                                         |
-| ------------- | -------------------------------- | :---: | ---------------------------------------------------------------------------------------------------------------------- |
-| Permissions   | `src/domain/permissions.test.ts` |  18   | Access rules, tree filtering per user, 403s from selectors, search never leaking                                       |
-| Store         | `src/store/appStore.test.ts`     |  19   | Every mutation, validation, 403s on writes, reordering, optimistic save + rollback                                     |
-| Components    | `src/test/App.test.tsx`          |  15   | The full app in jsdom: user switching, 403 screen, members trying admin actions, drawer, list sorting, assignee picker |
-| Browser (E2E) | `e2e/flowboard.spec.ts`          |   4   | Real mouse drag-and-drop, persistence after reload, rollback, Alice vs Bob                                             |
+| Kind          | File                             | Tests | What it covers                                                                                                                           |
+| ------------- | -------------------------------- | :---: | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Permissions   | `src/domain/permissions.test.ts` |  20   | Access rules, tree filtering per user, "Shared with me", breadcrumbs, 403s from selectors, search never leaking                          |
+| Store         | `src/store/appStore.test.ts`     |  20   | Every mutation, validation, 403s on writes, reordering, optimistic save + rollback                                                       |
+| Components    | `src/test/App.test.tsx`          |  17   | The full app in jsdom: user switching, 403 screen, members trying admin actions, workspace rename, drawer, list sorting, assignee picker |
+| Browser (E2E) | `e2e/flowboard.spec.ts`          |   4   | Real mouse drag-and-drop, persistence after reload, rollback, Alice vs Bob                                                               |
 
 ```bash
-npm test                          # unit + component (52 tests)
+npm test                          # unit + component (57 tests)
 npx vitest run src/domain         # one folder
 npx vitest run -t "rolls back"    # tests whose name matches
 npm run test:e2e                  # browser tests (run `npx playwright install chromium` once first)
@@ -275,10 +275,6 @@ npm run test:e2e                  # browser tests (run `npx playwright install c
 - **Search is a ⌘K palette**, not a filter on the current view. **Pagination** is "load more" over in-memory data (page size 10; Backlog has 12 tasks, so you can see it).
 - **Desktop-first:** a 960 px minimum width and no dark mode (both out of scope).
 - **Bundle** is about 157 kB gzipped, mostly React DOM and Headless UI, with no code splitting.
-
-### Known limitation
-
-- **Restricted tree nodes reveal parent names.** For Bob to reach Launch Content, the tree shows its private parents (Marketing › Brand Refresh) as locked, greyed items. Their _names_ are therefore visible to him, though nothing inside them is. The stricter alternative is to hide the parents and list shared items under a "Shared with me" section.
 
 ### What I'd do next (day 4 / week 2)
 

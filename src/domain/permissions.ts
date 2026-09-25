@@ -11,7 +11,7 @@
  *
  * So "the nearest explicit decision wins", private acts as a barrier, and an
  * explicit allow deep in the tree works even under a private/denied ancestor
- * (the ancestors are then shown as restricted path-only nodes in the tree).
+ * (the hidden ancestors are not shown; the item appears under "Shared with me").
  */
 import { forbidden, notFound, ok } from './result';
 import type { Container, DataState, Grant, ID, Result, StoreError, Task, User } from './types';

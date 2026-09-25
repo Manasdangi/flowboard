@@ -6,7 +6,7 @@ import { guardTask, guardViewList, usersWithAccess } from './permissions';
 import { ok } from './result';
 import { statusesForList } from './statuses';
 import { columnTasks, subtasksOf } from './tasks';
-import { ancestorsOf, selectVisibleLists } from './tree';
+import { selectVisibleLists, visibleAncestorsOf } from './tree';
 import type { Container, DataState, ID, Priority, Result, Status, Task, User } from './types';
 
 export interface BoardColumn {
@@ -151,7 +151,7 @@ export function selectTaskDetail(data: DataState, userId: ID, taskId: ID): Resul
   return ok({
     task,
     list: data.containers[task.primaryListId],
-    path: ancestorsOf(data, task.primaryListId),
+    path: visibleAncestorsOf(data, userId, task.primaryListId),
     statuses: statusesForList(data, task.primaryListId),
     subtasks: subtasksOf(data, task.id),
     parent: task.parentTaskId ? (data.tasks[task.parentTaskId] ?? null) : null,

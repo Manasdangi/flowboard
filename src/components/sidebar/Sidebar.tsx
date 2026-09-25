@@ -1,7 +1,7 @@
-import { Archive, ChevronRight, Eye, Plus, RotateCcw, Search } from 'lucide-react';
+import { Archive, ChevronRight, Eye, Pencil, Plus, RotateCcw, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { selectArchived, selectVisibleTree } from '@/domain/tree';
-import type { ID } from '@/domain/types';
+import { selectArchived, selectSharedWithMe, selectVisibleTree } from '@/domain/tree';
+import type { Container, ID } from '@/domain/types';
 import { cn } from '@/lib/cn';
 import { useRoute } from '@/lib/router';
 import { useActions, useAppStore, useCurrentUser, useData, useIsAdmin } from '@/store/hooks';
@@ -9,7 +9,7 @@ import { uiStore } from '@/store/ui';
 import { FOCUS_RING } from '@/ui/tokens';
 import { Kbd } from '../ui/Kbd';
 import { TreeSkeleton } from '../ui/Skeleton';
-import { SidebarTree } from './SidebarTree';
+import { RenameInput, SidebarTree } from './SidebarTree';
 
 export function Sidebar() {
   const data = useData();
@@ -20,6 +20,8 @@ export function Sidebar() {
 
   // Permission filtering happens in the selector, not here.
   const tree = useMemo(() => selectVisibleTree(data, user.id), [data, user.id]);
+  const shared = useMemo(() => selectSharedWithMe(data, user.id), [data, user.id]);
+  const onSelectList = (listId: ID) => navigate({ listId, taskId: null });
   const taskCounts = useMemo(() => {
     const counts: Record<ID, number> = {};
     for (const t of Object.values(data.tasks))
@@ -38,8 +40,8 @@ export function Sidebar() {
             <rect x="11" y="3" width="3" height="4.5" rx="1" fill="currentColor" opacity=".6" />
           </svg>
         </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold leading-tight text-ink">{workspace?.name}</p>
+        <div className="min-w-0 flex-1">
+          {workspace && <WorkspaceName workspace={workspace} isAdmin={isAdmin} />}
           <p className="text-2xs leading-tight text-ink-subtle">Flowboard workspace</p>
         </div>
       </div>
@@ -89,20 +91,76 @@ export function Sidebar() {
         </div>
         {boot === 'loading' ? (
           <TreeSkeleton />
-        ) : tree.length === 0 ? (
+        ) : tree.length === 0 && shared.length === 0 ? (
           <p className="px-2 py-6 text-center text-xs text-ink-subtle">Nothing has been shared with you yet.</p>
         ) : (
-          <SidebarTree
-            nodes={tree}
-            selectedListId={route.listId}
-            taskCounts={taskCounts}
-            onSelectList={(listId) => navigate({ listId, taskId: null })}
-          />
+          <>
+            <SidebarTree
+              nodes={tree}
+              label="Workspace"
+              selectedListId={route.listId}
+              taskCounts={taskCounts}
+              onSelectList={onSelectList}
+            />
+            {/* Items shared with the user inside containers they can't see; the parents stay hidden. */}
+            {shared.length > 0 && (
+              <div className="mt-4">
+                <p className="px-2 pb-1 text-2xs font-semibold uppercase tracking-wider text-ink-subtle">
+                  Shared with me
+                </p>
+                <SidebarTree
+                  nodes={shared}
+                  label="Shared with me"
+                  selectedListId={route.listId}
+                  taskCounts={taskCounts}
+                  onSelectList={onSelectList}
+                />
+              </div>
+            )}
+          </>
         )}
       </nav>
 
       {isAdmin && boot === 'ready' && <ArchivedSection />}
     </aside>
+  );
+}
+
+/** The workspace name in the header. Admins can rename it in place (the "U" of workspace CRUD). */
+function WorkspaceName({ workspace, isAdmin }: { workspace: Container; isAdmin: boolean }) {
+  const { renameContainer } = useActions();
+  const [editing, setEditing] = useState(false);
+
+  if (editing) {
+    return (
+      <RenameInput
+        initial={workspace.name}
+        onDone={(name) => {
+          setEditing(false);
+          if (name !== null && name !== workspace.name) renameContainer(workspace.id, name);
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="group flex min-w-0 items-center gap-1">
+      <p className="truncate text-sm font-semibold leading-tight text-ink">{workspace.name}</p>
+      {isAdmin && (
+        <button
+          type="button"
+          aria-label="Rename workspace"
+          title="Rename workspace"
+          onClick={() => setEditing(true)}
+          className={cn(
+            'flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint opacity-0 transition-opacity hover:bg-line hover:text-ink focus-visible:opacity-100 group-hover:opacity-100',
+            FOCUS_RING,
+          )}
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      )}
+    </div>
   );
 }
 

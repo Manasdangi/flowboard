@@ -59,12 +59,10 @@ describe('permission enforcement on mutations', () => {
   it('switching users immediately changes what the tree returns', () => {
     const { store, actions } = setup(U.alice);
     const names = () =>
-      selectVisibleTree(store.getState().data, store.getState().currentUserId).map(
-        (n) => `${n.container.name}${n.restricted ? '*' : ''}`,
-      );
+      selectVisibleTree(store.getState().data, store.getState().currentUserId).map((n) => n.container.name);
     expect(names()).toEqual(['Engineering', 'Marketing']);
     actions.switchUser(U.bob);
-    expect(names()).toEqual(['Engineering', 'Marketing*']);
+    expect(names()).toEqual(['Engineering']);
   });
 
   it('an admin sharing a container makes it visible to that member', async () => {
@@ -96,6 +94,13 @@ describe('containers', () => {
       code: 'VALIDATION',
     });
     expect(actions.createContainer({ parentId: F.q2, name: '   ' }).error?.code).toBe('VALIDATION');
+  });
+
+  it('renames the workspace for admins only', () => {
+    const admin = setup(U.alice);
+    expect(admin.actions.renameContainer(SEED_IDS.workspace, 'Acme HQ').data?.name).toBe('Acme HQ');
+    const member = setup(U.bob);
+    expect(member.actions.renameContainer(SEED_IDS.workspace, 'Mine').error?.code).toBe('FORBIDDEN');
   });
 
   it('reorders siblings', () => {

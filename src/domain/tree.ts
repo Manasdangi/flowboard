@@ -5,12 +5,6 @@ import type { Container, ContainerType, DataState, ID } from './types';
 export interface TreeNode {
   container: Container;
   children: TreeNode[];
-  /**
-   * The user can't open this node itself, but can see something inside it
-   * (e.g. an allow-grant on a list under a private space). Rendered as a
-   * locked, non-interactive path segment.
-   */
-  restricted: boolean;
 }
 
 /** Which container type may live directly under which. Lists hold tasks only. */
@@ -27,37 +21,55 @@ export function childrenOf(data: DataState, parentId: ID, opts: { includeArchive
     .sort(byPosition);
 }
 
-/**
- * The sidebar tree for a user: only containers they can see, plus restricted
- * ancestors needed to reach them. Archived subtrees are dropped entirely.
- */
-export function selectVisibleTree(data: DataState, userId: ID): TreeNode[] {
-  const build = (parentId: ID): TreeNode[] => {
-    const out: TreeNode[] = [];
-    for (const container of childrenOf(data, parentId)) {
-      const children = build(container.id);
-      const visible = canViewContainer(data, userId, container.id);
-      if (visible || children.length > 0) out.push({ container, children, restricted: !visible });
-    }
-    return out;
-  };
-  return build(data.workspaceId);
+/** A container and its visible descendants, descending only through containers the user can see. */
+function visibleSubtree(data: DataState, userId: ID, parentId: ID): TreeNode[] {
+  return childrenOf(data, parentId)
+    .filter((c) => canViewContainer(data, userId, c.id))
+    .map((container) => ({ container, children: visibleSubtree(data, userId, container.id) }));
 }
 
-/** Flat list of lists the user can open, in tree order. */
+/**
+ * The sidebar tree for a user: only containers they can see. A hidden
+ * container hides its whole subtree here; anything shared with the user
+ * inside it appears in `selectSharedWithMe` instead. Archived subtrees are dropped.
+ */
+export function selectVisibleTree(data: DataState, userId: ID): TreeNode[] {
+  return visibleSubtree(data, userId, data.workspaceId);
+}
+
+/**
+ * Containers the user can see whose parent they can't (e.g. an allow grant
+ * on a list inside a private space). Shown under "Shared with me", so the
+ * hidden parents are never revealed, not even by name.
+ */
+export function selectSharedWithMe(data: DataState, userId: ID): TreeNode[] {
+  const out: TreeNode[] = [];
+  const walk = (parentId: ID, parentVisible: boolean) => {
+    for (const container of childrenOf(data, parentId)) {
+      const visible = canViewContainer(data, userId, container.id);
+      if (visible && !parentVisible) out.push({ container, children: visibleSubtree(data, userId, container.id) });
+      walk(container.id, visible);
+    }
+  };
+  walk(data.workspaceId, true);
+  return out;
+}
+
+/** Flat list of lists the user can open (main tree first, then shared), in tree order. */
 export function selectVisibleLists(data: DataState, userId: ID): Container[] {
   const out: Container[] = [];
   const walk = (nodes: TreeNode[]) => {
     for (const n of nodes) {
-      if (n.container.type === 'list' && !n.restricted) out.push(n.container);
+      if (n.container.type === 'list') out.push(n.container);
       walk(n.children);
     }
   };
   walk(selectVisibleTree(data, userId));
+  walk(selectSharedWithMe(data, userId));
   return out;
 }
 
-/** Root → node (excluding the workspace). */
+/** Root → node (excluding the workspace). Use `visibleAncestorsOf` for anything shown to a user. */
 export function ancestorsOf(data: DataState, id: ID): Container[] {
   const path: Container[] = [];
   let node: Container | undefined = data.containers[id];
@@ -66,6 +78,11 @@ export function ancestorsOf(data: DataState, id: ID): Container[] {
     node = node.parentId ? data.containers[node.parentId] : undefined;
   }
   return path;
+}
+
+/** Breadcrumb path for a user: ancestors they can't see are left out, so their names never leak. */
+export function visibleAncestorsOf(data: DataState, userId: ID, id: ID): Container[] {
+  return ancestorsOf(data, id).filter((c) => canViewContainer(data, userId, c.id));
 }
 
 export function descendantIds(data: DataState, id: ID): ID[] {

@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { createSeed, SEED_IDS } from '@/data/seed';
 import { canViewContainer, guardTask, guardViewList, resolveAccess, usersWithAccess } from './permissions';
-import { selectVisibleLists, selectVisibleTree, type TreeNode } from './tree';
+import { selectSharedWithMe, selectVisibleLists, selectVisibleTree, visibleAncestorsOf, type TreeNode } from './tree';
 import { searchTasks, selectBoard, selectListPage, selectTaskDetail } from './selectors';
 import type { DataState } from './types';
 
 const { users: U, lists: L, spaces: S, folders: F } = SEED_IDS;
 const data = createSeed(new Date('2026-06-01T12:00:00Z'));
 
-/** Flatten a tree to "name" / "name (restricted)" labels for readable assertions. */
+/** Flatten a tree to its container names, depth-first, for readable assertions. */
 function labels(nodes: TreeNode[]): string[] {
-  return nodes.flatMap((n) => [`${n.container.name}${n.restricted ? ' (restricted)' : ''}`, ...labels(n.children)]);
+  return nodes.flatMap((n) => [n.container.name, ...labels(n.children)]);
 }
 
 const withGrants = (extra: DataState['grants']): DataState => ({ ...data, grants: { ...data.grants, ...extra } });
@@ -74,17 +74,30 @@ describe('selectVisibleTree', () => {
     ]);
   });
 
-  it('filters Bob’s tree and marks path-only ancestors as restricted', () => {
+  it('filters Bob’s tree to only nodes he can see — no hidden private parents', () => {
     expect(labels(selectVisibleTree(data, U.bob))).toEqual([
       'Engineering',
       'Q2 Launch',
       'Backlog',
       'Sprint 14',
       'Security Audit',
-      'Marketing (restricted)',
-      'Brand Refresh (restricted)',
+    ]);
+  });
+
+  it('puts items shared inside hidden containers under "Shared with me", without their parents', () => {
+    expect(labels(selectSharedWithMe(data, U.bob))).toEqual(['Launch Content']);
+    expect(selectSharedWithMe(data, U.alice)).toEqual([]);
+    expect(selectSharedWithMe(data, U.carol)).toEqual([]);
+  });
+
+  it('never reveals hidden ancestors in breadcrumbs', () => {
+    expect(visibleAncestorsOf(data, U.bob, L.launch).map((c) => c.name)).toEqual(['Launch Content']);
+    expect(visibleAncestorsOf(data, U.alice, L.launch).map((c) => c.name)).toEqual([
+      'Marketing',
+      'Brand Refresh',
       'Launch Content',
     ]);
+    expect(selectTaskDetail(data, U.bob, 't_lc_1').data?.path.map((c) => c.name)).toEqual(['Launch Content']);
   });
 
   it('filters Carol’s tree by her different grants', () => {
@@ -102,7 +115,8 @@ describe('selectVisibleTree', () => {
   it('drops a subtree entirely when nothing in it is visible', () => {
     const noLaunch = withGrants({});
     delete noLaunch.grants.g_bob_launch;
-    expect(labels(selectVisibleTree(noLaunch, U.bob))).not.toContain('Marketing (restricted)');
+    expect(labels(selectVisibleTree(noLaunch, U.bob))).not.toContain('Marketing');
+    expect(selectSharedWithMe(noLaunch, U.bob)).toEqual([]);
   });
 
   it('reflects visibility changes immediately', () => {
@@ -113,8 +127,9 @@ describe('selectVisibleTree', () => {
     expect(labels(selectVisibleTree(publicMarketing, U.bob))).toContain('Campaigns');
   });
 
-  it('lists only openable lists', () => {
+  it('lists only openable lists, including shared ones', () => {
     expect(selectVisibleLists(data, U.carol).map((l) => l.id)).toEqual([L.backlog, L.campaigns, L.launch]);
+    expect(selectVisibleLists(data, U.bob).map((l) => l.id)).toEqual([L.backlog, L.sprint, L.security, L.launch]);
   });
 });
 

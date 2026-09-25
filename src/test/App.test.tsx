@@ -17,7 +17,12 @@ describe('App — permissions in the UI', () => {
 
     await waitFor(() => expect(within(tree()).queryByText('Campaigns')).not.toBeInTheDocument());
     expect(within(tree()).getByText('Security Audit')).toBeInTheDocument();
-    expect(within(tree()).getByText('Launch Content')).toBeInTheDocument();
+    // Private parents Bob can't see are gone entirely — not even their names.
+    expect(within(tree()).queryByText('Marketing')).not.toBeInTheDocument();
+    expect(within(tree()).queryByText('Brand Refresh')).not.toBeInTheDocument();
+    // The one list shared with him inside Marketing appears on its own.
+    const shared = screen.getByRole('tree', { name: 'Shared with me' });
+    expect(within(shared).getByText('Launch Content')).toBeInTheDocument();
     expect(screen.getByText(/Member view/)).toBeInTheDocument();
   });
 
@@ -41,6 +46,25 @@ describe('App — permissions in the UI', () => {
     await screen.findByTestId('board');
     act(() => void store.getState().actions.renameContainer(L.backlog, 'Mine now'));
     expect(await screen.findByRole('alert')).toHaveTextContent(/Only workspace admins can rename/);
+  });
+});
+
+describe('App — workspace rename', () => {
+  it('lets an admin rename the workspace from the sidebar header', async () => {
+    const { user, store } = renderApp({ route: { listId: L.backlog } });
+    await screen.findByTestId('board');
+    await user.click(screen.getByRole('button', { name: 'Rename workspace' }));
+    const input = screen.getByRole('textbox', { name: 'Rename' });
+    await user.clear(input);
+    await user.type(input, 'Acme HQ{Enter}');
+    expect(store.getState().data.containers[SEED_IDS.workspace].name).toBe('Acme HQ');
+    expect(screen.getByText('Acme HQ')).toBeInTheDocument();
+  });
+
+  it('does not offer workspace rename to members', async () => {
+    renderApp({ userId: U.bob, route: { listId: L.backlog } });
+    await screen.findByTestId('board');
+    expect(screen.queryByRole('button', { name: 'Rename workspace' })).not.toBeInTheDocument();
   });
 });
 

@@ -1,7 +1,7 @@
 import { ChevronRight, WifiOff } from 'lucide-react';
 import { useMemo } from 'react';
 import { canViewContainer } from '@/domain/permissions';
-import { ancestorsOf } from '@/domain/tree';
+import { visibleAncestorsOf } from '@/domain/tree';
 import { useRoute } from '@/lib/router';
 import { useAppStore, useData } from '@/store/hooks';
 import { UserSwitcher } from './UserSwitcher';
@@ -14,7 +14,10 @@ export function TopBar() {
 
   // Breadcrumbs only for lists the user may open — never leak names of forbidden ones.
   const path = useMemo(
-    () => (route.listId && canViewContainer(data, userId, route.listId) ? ancestorsOf(data, route.listId) : []),
+    () =>
+      route.listId && canViewContainer(data, userId, route.listId)
+        ? visibleAncestorsOf(data, userId, route.listId)
+        : [],
     [data, userId, route.listId],
   );
 
