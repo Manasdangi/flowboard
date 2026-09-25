@@ -27,30 +27,34 @@ export function MenuAction({
   icon,
   children,
   onClick,
-  disabled,
+  muted,
   danger,
   hint,
 }: {
   icon?: ReactNode;
   children: ReactNode;
   onClick: () => void;
-  disabled?: boolean;
+  /** Still clickable, but visually secondary (e.g. an action the user isn't allowed to take). */
+  muted?: boolean;
   danger?: boolean;
   hint?: ReactNode;
 }) {
   return (
-    <MenuItem disabled={disabled}>
+    <MenuItem>
       <button
         type="button"
         onClick={onClick}
         className={cn(
-          'flex w-full items-center gap-2.5 rounded-control px-2.5 py-1.5 text-left text-sm transition-colors data-[disabled]:cursor-not-allowed data-[focus]:bg-surface-sunken data-[disabled]:opacity-45',
-          danger ? 'text-rose-600 data-[focus]:bg-rose-50' : 'text-ink',
+          'flex w-full items-center gap-2.5 rounded-control px-2.5 py-1.5 text-left text-sm transition-colors data-[focus]:bg-surface-sunken',
+          danger ? 'text-rose-600 data-[focus]:bg-rose-50' : muted ? 'text-ink-subtle' : 'text-ink',
         )}
       >
         {icon && (
           <span
-            className={cn('flex h-4 w-4 items-center justify-center', danger ? 'text-rose-500' : 'text-ink-subtle')}
+            className={cn(
+              'flex h-4 w-4 items-center justify-center',
+              danger ? 'text-rose-500' : muted ? 'text-ink-faint' : 'text-ink-subtle',
+            )}
           >
             {icon}
           </span>

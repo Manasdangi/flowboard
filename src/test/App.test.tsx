@@ -44,6 +44,26 @@ describe('App — permissions in the UI', () => {
   });
 });
 
+describe('App — members attempting admin-only actions', () => {
+  it.each([
+    ['Rename', /Only workspace admins can rename containers/],
+    ['Archive', /Only workspace admins can archive containers/],
+    ['Sharing & visibility', /Only workspace admins can change sharing/],
+    ['Edit statuses', /Only workspace admins can configure statuses/],
+  ])('clicking "%s" as Bob shows the store’s 403 and changes nothing', async (item, message) => {
+    const { user, store } = renderApp({ userId: U.bob, route: { listId: L.backlog } });
+    await screen.findByTestId('board');
+    const before = store.getState().data;
+
+    await user.click(within(tree()).getByRole('button', { name: 'Backlog options' }));
+    await user.click(await screen.findByRole('menuitem', { name: new RegExp(item) }));
+
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts.some((a) => message.test(a.textContent ?? ''))).toBe(true);
+    expect(store.getState().data).toBe(before);
+  });
+});
+
 describe('App — board, list and drawer', () => {
   it('renders kanban columns from the list’s own status set', async () => {
     renderApp({ route: { listId: L.sprint } });
