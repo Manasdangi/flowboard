@@ -7,9 +7,9 @@ import type { DataState, ID } from '@/domain/types';
 import type { AppStore } from './appStore';
 import type { TransportSettings } from './transport';
 
-const KEY = 'flowboard:v2';
-// v2: tasks have at most one assignee — v1 blobs (which may have several) are discarded.
-const SCHEMA_VERSION = 2;
+const KEY = 'flowboard:v3';
+// v3: multiple assignees per task again; older saves are discarded so the demo reseeds.
+const SCHEMA_VERSION = 3;
 
 interface Persisted {
   version: number;

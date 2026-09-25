@@ -170,11 +170,11 @@ User      { id, name, email, role: 'admin'|'member', title, avatarColor }
 - **Hierarchy.** `CHILD_TYPE` enforces workspace → space → folder → list. Creating a child under a list returns `VALIDATION`, because lists hold tasks only.
 - **Positions** are whole numbers spaced by 1000. A reorder or drop re-numbers only the affected column or group of siblings, which keeps the order predictable. A task's `position` is its order within its status column.
 - **Statuses** belong to a list, and a task can only use its own list's statuses. When a task moves to another list, its status is matched by **same name → same category → first status**, and its subtasks move with it.
-- **One assignee per task.** This is a deliberate product decision: one clear owner per task. The field stays `assigneeIds: ID[]` so the shape matches the brief, but the store allows at most one (`MAX_ASSIGNEES = 1` in `tasks.ts`; more returns `VALIDATION`). Changing that constant, plus the picker, brings back multiple assignees. The picker only suggests people who can see the list.
+- **Assignees.** A task can have any number of assignees (`assigneeIds: ID[]`); duplicates are collapsed and unknown user ids return `VALIDATION`. The drawer's picker only suggests people who can see the list, so you can't assign someone who couldn't open the task.
 - **Subtasks** are one level deep (`parentTaskId`), in the same list as their parent. They show as progress on the parent card (`2/3`) and as a checklist in the drawer.
 - **Deleting.** Containers are **archived** (soft delete): the container and everything inside it are hidden from every selector, and admins can restore them from **Archived** at the bottom of the sidebar. Tasks are **hard-deleted** after an inline confirm, together with their subtasks. Containers carry structure and grants that are costly to rebuild; tasks are cheap to recreate.
 - **Errors.** Every store call returns `{ data }` or `{ error: { code, message } }`. The code is one of `FORBIDDEN` (403), `NOT_FOUND`, `VALIDATION`, `CONFLICT` or `NETWORK`.
-- **Persistence** (optional in the brief, enabled here). The data, the selected user and the failure toggle are saved to `localStorage` under `flowboard:v2`. The data is versioned: whenever its shape changes, the version is bumped and old saves are dropped instead of breaking the app.
+- **Persistence** (optional in the brief, enabled here). The data, the selected user and the failure toggle are saved to `localStorage` under `flowboard:v3`. The data is versioned: whenever its shape changes, the version is bumped and old saves are dropped instead of breaking the app.
 
 ---
 
@@ -272,7 +272,6 @@ npm run test:e2e                  # browser tests (run `npx playwright install c
 - **Only drag-and-drop is optimistic and async.** Other changes apply to the local store immediately, which is honest for a client-only app.
 - **Native `<select>` and `<input type="date">` in the drawer.** Accessible and robust, but less polished than custom dropdowns and date pickers.
 - **Status editing** covers add, rename, recolour, change category and delete, but not reordering columns by drag. Deleting a status that tasks still use is refused (`CONFLICT`) rather than silently moving those tasks.
-- **Single assignee** instead of the brief's multi-assignee array (see [Data model](#5-data-model)).
 - **Search is a ⌘K palette**, not a filter on the current view. **Pagination** is "load more" over in-memory data (page size 10; Backlog has 12 tasks, so you can see it).
 - **Desktop-first:** a 960 px minimum width and no dark mode (both out of scope).
 - **Bundle** is about 157 kB gzipped, mostly React DOM and Headless UI, with no code splitting.

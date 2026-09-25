@@ -154,18 +154,14 @@ describe('tasks', () => {
     expect(t.t_sp_3a).toMatchObject({ primaryListId: L.security, statusId: statusId(L.security, 'resolved') });
   });
 
-  it('allows at most one assignee per task', () => {
+  it('supports multiple assignees and collapses duplicates', () => {
     const { actions } = setup();
-    expect(actions.updateTask('t_bl_1', { assigneeIds: [U.alice, U.bob] }).error).toEqual({
-      code: 'VALIDATION',
-      message: 'A task can have only one assignee.',
-    });
-    expect(actions.createTask({ listId: L.backlog, title: 'x', assigneeIds: [U.alice, U.bob] }).error?.code).toBe(
-      'VALIDATION',
-    );
-    expect(actions.updateTask('t_bl_1', { assigneeIds: [U.alice] }).data?.assigneeIds).toEqual([U.alice]);
-    // Duplicates collapse rather than counting twice.
+    expect(actions.updateTask('t_bl_1', { assigneeIds: [U.alice, U.bob] }).data?.assigneeIds).toEqual([U.alice, U.bob]);
+    expect(
+      actions.createTask({ listId: L.backlog, title: 'x', assigneeIds: [U.alice, U.carol] }).data?.assigneeIds,
+    ).toEqual([U.alice, U.carol]);
     expect(actions.updateTask('t_bl_1', { assigneeIds: [U.bob, U.bob] }).data?.assigneeIds).toEqual([U.bob]);
+    expect(actions.updateTask('t_bl_1', { assigneeIds: ['u_nobody'] }).error?.code).toBe('VALIDATION');
   });
 
   it('deletes a task together with its subtasks', () => {

@@ -16,76 +16,77 @@ const matches = (user: User, query: string) => {
 };
 
 /**
- * Single-assignee field. The current assignee is a removable chip; typing
- * searches the people who can see this list (the store scopes `candidates`),
- * and picking someone replaces the current assignee.
- * ↑/↓ + Enter picks a suggestion, Backspace on an empty query unassigns.
+ * Multi-assignee field. Each assignee is a removable chip; typing searches the
+ * people who can see this list (the store scopes `candidates`) and picking one
+ * adds them. Backspace on an empty search removes the last chip.
  */
 export function AssigneePicker({
-  assigneeId,
+  assigneeIds,
   candidates,
   users,
   onChange,
 }: {
-  assigneeId: ID | null;
-  /** Users allowed to be assigned (have access to the list). */
+  assigneeIds: ID[];
+  /** Users allowed to be assigned (they can see the list). */
   candidates: User[];
-  /** All users, to render the chip for the existing assignee. */
+  /** All users, to render chips for existing assignees. */
   users: Record<ID, User>;
-  onChange: (id: ID | null) => void;
+  onChange: (ids: ID[]) => void;
 }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const assignee = assigneeId ? users[assigneeId] : undefined;
-  const hasAccess = !!assignee && candidates.some((u) => u.id === assignee.id);
-  const suggestions = candidates.filter((u) => u.id !== assigneeId && matches(u, query));
+  const assignees = assigneeIds.map((id) => users[id]).filter(Boolean);
+  const canSeeList = (id: ID) => candidates.some((u) => u.id === id);
+  const suggestions = candidates.filter((u) => !assigneeIds.includes(u.id) && matches(u, query));
 
-  const pick = (user: User | null) => {
+  const add = (user: User | null) => {
     if (!user) return;
-    onChange(user.id);
+    onChange([...assigneeIds, user.id]);
     setQuery('');
   };
+  const remove = (id: ID) => onChange(assigneeIds.filter((x) => x !== id));
 
   return (
-    <Combobox value={null} onChange={pick} immediate>
+    <Combobox value={null} onChange={add} immediate>
       <div
         onClick={() => inputRef.current?.focus()}
-        className="flex h-8 w-full cursor-text items-center gap-1 rounded-control bg-surface px-1 ring-1 ring-inset ring-line-strong transition-shadow focus-within:ring-2 focus-within:ring-brand-500 hover:ring-ink-faint"
+        className="flex min-h-8 w-full cursor-text flex-wrap items-center gap-1 rounded-control bg-surface p-1 ring-1 ring-inset ring-line-strong transition-shadow focus-within:ring-2 focus-within:ring-brand-500 hover:ring-ink-faint"
       >
-        {assignee && (
+        {assignees.map((user) => (
           <span
+            key={user.id}
             data-testid="assignee-chip"
-            title={hasAccess ? assignee.email : `${assignee.name} can no longer see this list`}
+            title={canSeeList(user.id) ? user.email : `${user.name} can no longer see this list`}
             className={cn(
-              'inline-flex h-6 shrink-0 items-center gap-1 rounded-full py-0.5 pl-0.5 pr-1 text-xs font-medium',
-              hasAccess ? 'bg-brand-50 text-brand-800' : 'bg-surface-sunken text-ink-subtle line-through',
+              'inline-flex h-6 items-center gap-1 rounded-full py-0.5 pl-0.5 pr-1 text-xs font-medium',
+              canSeeList(user.id) ? 'bg-brand-50 text-brand-800' : 'bg-surface-sunken text-ink-subtle line-through',
             )}
           >
-            <Avatar user={assignee} size="xs" />
-            {assignee.name}
+            <Avatar user={user} size="xs" />
+            {user.name}
             <button
               type="button"
-              aria-label={`Unassign ${assignee.name}`}
+              aria-label={`Unassign ${user.name}`}
               onClick={(e) => {
                 e.stopPropagation();
-                onChange(null);
+                remove(user.id);
               }}
               className="flex h-4 w-4 items-center justify-center rounded-full opacity-60 hover:bg-brand-100 hover:opacity-100"
             >
               <X className="h-3 w-3" />
             </button>
           </span>
-        )}
+        ))}
         <ComboboxInput
           ref={inputRef}
-          aria-label="Search assignee"
+          aria-label="Search assignees"
           value={query}
-          placeholder={assignee ? 'Reassign…' : 'Search people…'}
+          placeholder={assignees.length ? 'Add…' : 'Search people…'}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Backspace' && !query && assignee) onChange(null);
+            if (e.key === 'Backspace' && !query && assigneeIds.length) remove(assigneeIds[assigneeIds.length - 1]);
           }}
-          className="h-6 min-w-0 flex-1 bg-transparent px-1.5 text-sm text-ink placeholder:text-ink-faint focus:outline-none"
+          className="h-6 min-w-24 flex-1 bg-transparent px-1.5 text-sm text-ink placeholder:text-ink-faint focus:outline-none"
         />
       </div>
 
@@ -93,16 +94,16 @@ export function AssigneePicker({
         anchor={{ to: 'bottom start', gap: 4 }}
         className="z-50 max-h-64 w-[var(--input-width)] min-w-64 overflow-y-auto rounded-card bg-surface p-1 shadow-pop"
       >
-        {suggestions.map((u) => (
+        {suggestions.map((user) => (
           <ComboboxOption
-            key={u.id}
-            value={u}
+            key={user.id}
+            value={user}
             className="flex cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-1.5 data-[focus]:bg-brand-50"
           >
-            <Avatar user={u} size="sm" />
+            <Avatar user={user} size="sm" />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-ink">{u.name}</span>
-              <span className="block truncate text-xs text-ink-subtle">{u.title}</span>
+              <span className="block truncate text-sm font-medium text-ink">{user.name}</span>
+              <span className="block truncate text-xs text-ink-subtle">{user.title}</span>
             </span>
           </ComboboxOption>
         ))}
@@ -110,7 +111,7 @@ export function AssigneePicker({
           <div className="px-3 py-2.5 text-xs text-ink-subtle">
             {query.trim()
               ? `No one with access to this list matches “${query.trim()}”.`
-              : 'No one else has access to this list.'}
+              : 'Everyone with access to this list is already assigned.'}
           </div>
         )}
       </ComboboxOptions>

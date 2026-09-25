@@ -12,8 +12,6 @@ import { mapStatusToList } from './statuses';
 import type { DataState, ID, ISODate, Priority, Result, Task } from './types';
 
 export const TITLE_MAX = 500;
-/** Product decision: a task has a single owner. Kept as an array to match the brief's `assigneeIds` shape. */
-export const MAX_ASSIGNEES = 1;
 export const PRIORITIES: Priority[] = ['urgent', 'high', 'normal', 'low', 'none'];
 
 /** Top-level tasks in one status column, ordered. */
@@ -62,9 +60,7 @@ function validateFields(data: DataState, listId: ID, fields: Partial<TaskFields>
   if (fields.assigneeIds !== undefined) {
     const unknown = fields.assigneeIds.find((id) => !data.users[id]);
     if (unknown) return fail('VALIDATION', `Unknown assignee "${unknown}".`);
-    const ids = [...new Set(fields.assigneeIds)];
-    if (ids.length > MAX_ASSIGNEES) return fail('VALIDATION', 'A task can have only one assignee.');
-    out.assigneeIds = ids;
+    out.assigneeIds = [...new Set(fields.assigneeIds)];
   }
   if (fields.dueDate) {
     if (Number.isNaN(Date.parse(fields.dueDate))) return fail('VALIDATION', 'Due date must be an ISO datetime.');

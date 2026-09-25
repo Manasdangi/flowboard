@@ -15,7 +15,7 @@ const PAGE_SIZE = 10;
 const COLUMNS: { key: SortKey; label: string; className: string }[] = [
   { key: 'title', label: 'Task', className: 'w-auto' },
   { key: 'status', label: 'Status', className: 'w-40' },
-  { key: 'manual', label: 'Assignee', className: 'w-28' },
+  { key: 'manual', label: 'Assignees', className: 'w-28' },
   { key: 'priority', label: 'Priority', className: 'w-32' },
   { key: 'dueDate', label: 'Due date', className: 'w-32' },
 ];

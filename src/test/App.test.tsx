@@ -105,37 +105,39 @@ describe('App — board, list and drawer', () => {
     );
   });
 
-  it('assignee field searches people with access; picking replaces the single assignee', async () => {
+  it('assignee field searches people with access, adds several and removes them', async () => {
     const { user, store } = renderApp({ route: { listId: L.backlog, taskId: 't_bl_1' } });
     const drawer = await screen.findByTestId('task-drawer');
-    const search = within(drawer).getByLabelText('Search assignee');
-    expect(within(drawer).getByTestId('assignee-chip')).toHaveTextContent('Bob Martinez');
+    const search = within(drawer).getByLabelText('Search assignees');
+    const chips = () =>
+      within(drawer)
+        .queryAllByTestId('assignee-chip')
+        .map((c) => c.textContent);
+    expect(chips()).toEqual([expect.stringContaining('Bob Martinez')]);
 
+    // Adding keeps the existing assignee: tasks can have several.
     await user.type(search, 'car');
     const options = await screen.findAllByRole('option');
     expect(options.map((o) => o.textContent)).toEqual([expect.stringContaining('Carol Singh')]);
     await user.click(options[0]);
-    // Carol replaces Bob — a task has exactly one owner.
-    expect(store.getState().data.tasks.t_bl_1.assigneeIds).toEqual([U.carol]);
-    expect(within(drawer).getByTestId('assignee-chip')).toHaveTextContent('Carol Singh');
+    expect(store.getState().data.tasks.t_bl_1.assigneeIds).toEqual([U.bob, U.carol]);
+    expect(chips()).toHaveLength(2);
     expect(search).toHaveValue('');
 
-    await user.click(within(drawer).getByRole('button', { name: 'Unassign Carol Singh' }));
-    expect(store.getState().data.tasks.t_bl_1.assigneeIds).toEqual([]);
-    expect(within(drawer).queryByTestId('assignee-chip')).not.toBeInTheDocument();
+    await user.click(within(drawer).getByRole('button', { name: 'Unassign Bob Martinez' }));
+    expect(store.getState().data.tasks.t_bl_1.assigneeIds).toEqual([U.carol]);
 
-    // Backspace on an empty query unassigns.
-    await user.type(search, 'ali');
-    await user.click(await screen.findByRole('option', { name: /Alice Chen/ }));
+    // Backspace on an empty search removes the last chip.
     await user.click(search);
     await user.keyboard('{Backspace}');
     expect(store.getState().data.tasks.t_bl_1.assigneeIds).toEqual([]);
+    expect(chips()).toEqual([]);
   });
 
   it('assignee suggestions only include people who can see the list', async () => {
     const { user } = renderApp({ route: { listId: L.sprint, taskId: 't_sp_7' } });
     const drawer = await screen.findByTestId('task-drawer');
-    await user.type(within(drawer).getByLabelText('Search assignee'), 'carol');
+    await user.type(within(drawer).getByLabelText('Search assignees'), 'carol');
     // Carol is denied on Sprint 14, so she is never offered.
     expect(await screen.findByText(/No one with access to this list matches/)).toBeInTheDocument();
     expect(screen.queryByRole('option')).not.toBeInTheDocument();

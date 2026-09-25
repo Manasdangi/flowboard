@@ -8,7 +8,7 @@ import {
   FolderInput,
   Lock,
   Trash2,
-  UserRound,
+  Users,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -258,12 +258,12 @@ function DrawerContent({
               </Select>
             </div>
           </Prop>
-          <Prop icon={<UserRound className="h-3.5 w-3.5" />} label="Assignee">
+          <Prop icon={<Users className="h-3.5 w-3.5" />} label="Assignees">
             <AssigneePicker
-              assigneeId={task.assigneeIds[0] ?? null}
+              assigneeIds={task.assigneeIds}
               candidates={assignableUsers}
               users={users}
-              onChange={(id) => updateTask(task.id, { assigneeIds: id ? [id] : [] })}
+              onChange={(assigneeIds) => updateTask(task.id, { assigneeIds })}
             />
           </Prop>
           <Prop icon={<CalendarDays className="h-3.5 w-3.5" />} label="Due date">

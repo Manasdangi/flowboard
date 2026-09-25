@@ -53,8 +53,7 @@ Data flow: component → `useActions().x()` → `commit(domainFn(get().data, act
 4. **Tailwind utilities only.** No CSS files, CSS modules, `@apply` or CSS-in-JS. No `style=` except dnd-kit transforms (currently exactly two: `TaskCard.tsx`, `SidebarTree.tsx`). Use theme tokens (`brand`, `ink`, `canvas`, `surface`, `line`, `shadow-card`, `rounded-card`, …) rather than raw hex. Status and priority colours come from `src/ui/tokens.ts` only.
 5. **Never leak forbidden data.** A 403 must not reveal a list's name, tasks, or breadcrumbs. Search and assignee suggestions are permission-filtered.
 6. **Hierarchy**: workspace → space → folder → list. Lists hold tasks only. Subtasks are one level deep.
-7. **One assignee per task.** `assigneeIds` is an array of length ≤ `MAX_ASSIGNEES` (1), enforced in `tasks.ts`.
-8. **Seed ids are a test contract.** Add new fixtures; don't rename existing ids.
+7. **Seed ids are a test contract.** Add new fixtures; don't rename existing ids.
 
 ## Conventions
 
