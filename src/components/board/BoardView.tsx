@@ -8,9 +8,11 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type Active,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type Over,
   type UniqueIdentifier,
 } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -26,6 +28,23 @@ import { QuickAdd } from './QuickAdd';
 import { SortableTaskCard, TaskCardBody } from './TaskCard';
 
 type Columns = Record<ID, ID[]>;
+
+/**
+ * Where a dragged card should land within a column it's hovering over: right
+ * before the hovered card if the pointer is above its vertical midpoint,
+ * right after if below. Falls back to the end of the column if the hovered
+ * id isn't in it (e.g. hovering the column's empty space, not a card).
+ */
+function insertionIndex(column: ID[], over: Over, active: Active): number {
+  const overIndex = column.indexOf(String(over.id));
+  if (overIndex < 0) return column.length;
+
+  const draggedTop = active.rect.current.translated?.top;
+  const overMidpointY = over.rect.top + over.rect.height / 2;
+  const draggedIsBelowMidpoint = draggedTop !== undefined && draggedTop > overMidpointY;
+
+  return draggedIsBelowMidpoint ? overIndex + 1 : overIndex;
+}
 
 /**
  * Kanban board. During a drag we keep a local copy of the column → task ids
@@ -86,12 +105,9 @@ export function BoardView({ board, onOpenTask }: { board: BoardModel; onOpenTask
     setDragColumns((prev) => {
       if (!prev) return prev;
       const target = prev[to];
-      const overIndex = target.indexOf(String(over.id));
-      const translated = active.rect.current.translated;
-      const below = translated && overIndex >= 0 ? translated.top > over.rect.top + over.rect.height / 2 : false;
-      const index = overIndex >= 0 ? overIndex + (below ? 1 : 0) : target.length;
+      const insertAt = insertionIndex(target, over, active);
       const nextTarget = [...target];
-      nextTarget.splice(index, 0, String(active.id));
+      nextTarget.splice(insertAt, 0, String(active.id));
       return { ...prev, [from]: prev[from].filter((id) => id !== active.id), [to]: nextTarget };
     });
   };

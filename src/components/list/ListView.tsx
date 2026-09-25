@@ -36,11 +36,14 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
   if (page.error) return null; // ListScreen renders the 403 state before we get here.
   const { rows, total, nextOffset, subtaskProgress } = page.data;
 
+  /** Clicking a sortable column header cycles: ascending → descending → back to manual order. */
   const cycleSort = (key: SortKey) => {
     if (!SORTABLE.includes(key)) return;
-    setSort((s) =>
-      s.key !== key ? { key, dir: 'asc' } : s.dir === 'asc' ? { key, dir: 'desc' } : { key: 'manual', dir: 'asc' },
-    );
+    setSort((current) => {
+      if (current.key !== key) return { key, dir: 'asc' };
+      if (current.dir === 'asc') return { key, dir: 'desc' };
+      return { key: 'manual', dir: 'asc' };
+    });
   };
 
   return (
