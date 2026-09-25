@@ -12,30 +12,6 @@ There's **no backend**: a typed Zustand store, seeded with demo data, plays the 
 
 ---
 
-## What's implemented
-
-Every must-have requirement from the brief, and where to find it in the code:
-
-| Brief requirement                                                                     | Status | Where                                                                                            |
-| ------------------------------------------------------------------------------------- | :----: | ------------------------------------------------------------------------------------------------ |
-| Hierarchy: workspace → space → folder → list; CRUD; drag to reorder siblings; archive |   ✅   | `domain/containers.ts`, `domain/tree.ts`, `components/sidebar/`, `components/dialogs/`           |
-| Tasks: create, read, update, delete; move between lists; change status; reorder       |   ✅   | `domain/tasks.ts`, `components/task/TaskDrawer.tsx`, `components/board/`                         |
-| Subtasks (one level, stretch within MVP)                                              |   ✅   | `domain/tasks.ts`, `components/task/SubtaskList.tsx`                                             |
-| Per-list status sets (id, name, category, color, position)                            |   ✅   | `domain/statuses.ts`, `components/dialogs/StatusDialog.tsx`                                      |
-| Kanban board: columns = statuses, drag between and within columns                     |   ✅   | `components/board/BoardView.tsx`, `TaskCard.tsx`                                                 |
-| List view: sort by due date and priority, row opens drawer, pagination (optional)     |   ✅   | `components/list/ListView.tsx`, `selectListPage` in `domain/selectors.ts`                        |
-| Collapsible sidebar tree; selecting a list loads it                                   |   ✅   | `components/sidebar/Sidebar.tsx`, `SidebarTree.tsx`                                              |
-| Permissions: 3 users, user switcher, allow/deny grants, public/private, 403s          |   ✅   | `domain/permissions.ts`, `components/layout/UserSwitcher.tsx`                                    |
-| Permission checks in the store and selectors, not only the UI                         |   ✅   | Guards in `domain/permissions.ts`, called by every selector and mutation                         |
-| Typed client store + seed data; `{ error: { code, message } }`                        |   ✅   | `store/appStore.ts`, `data/seed.ts`, `domain/types.ts`, `domain/result.ts`                       |
-| UX: Tailwind only, theme tokens, skeletons, empty states, toasts, DnD feedback        |   ✅   | `tailwind.config.ts`, `ui/tokens.ts`, `components/ui/`                                           |
-| Tests: permission unit tests + component and E2E tests                                |   ✅   | `domain/permissions.test.ts`, `store/appStore.test.ts`, `test/App.test.tsx`, `e2e/`              |
-| Stretch: optimistic DnD with rollback · client-side search                            |   ✅   | `moveTask` in `store/appStore.ts` + `store/transport.ts` · `components/search/SearchPalette.tsx` |
-
-_Paths are relative to `src/`, except `e2e/` and `tailwind.config.ts`._
-
----
-
 ## 1. Run locally
 
 Requires **Node.js 20+** (developed on Node 22).
