@@ -1,0 +1,7 @@
+/*
+ * The only stylesheet in the project: Tailwind's three layer directives.
+ * All styling lives in utility classes in JSX; design tokens live in tailwind.config.ts.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

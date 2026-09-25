@@ -1,0 +1,2 @@
+# Block the commit if staged TS/TSX files fail ESLint (see "lint-staged" in package.json).
+npx lint-staged

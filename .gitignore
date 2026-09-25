@@ -1,0 +1,19 @@
+node_modules
+dist
+coverage
+*.local
+.DS_Store
+.vite
+*.tsbuildinfo
+test-results
+playwright-report
+
+# Secrets: never commit (add a .env.example with placeholder values instead)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Personal editor / assistant settings
+.claude/settings.local.json

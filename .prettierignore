@@ -1,0 +1,9 @@
+# Build output & generated files
+dist
+coverage
+test-results
+playwright-report
+package-lock.json
+
+# Husky's internal plumbing
+.husky/_
