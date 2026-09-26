@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createSeed, SEED_IDS } from '@/data/seed';
 import { canViewContainer, guardTask, guardViewList, resolveAccess, usersWithAccess } from './permissions';
 import { selectSharedWithMe, selectVisibleLists, selectVisibleTree, visibleAncestorsOf, type TreeNode } from './tree';
-import { searchTasks, selectBoard, selectListPage, selectTaskDetail } from './selectors';
+import { searchTasks, selectBoard, selectListPage, selectTaskDetail, UNASSIGNED } from './selectors';
 import type { DataState } from './types';
 
 const { users: U, lists: L, spaces: S, folders: F } = SEED_IDS;
@@ -157,5 +157,24 @@ describe('task access through selectors', () => {
   it('only offers assignees who can see the list', () => {
     expect(usersWithAccess(data, L.security).map((u) => u.id)).toEqual([U.alice, U.bob]);
     expect(usersWithAccess(data, L.sprint).map((u) => u.id)).toEqual([U.alice, U.bob]);
+  });
+});
+
+describe('selectListPage assignee filter', () => {
+  const sort = { key: 'manual', dir: 'asc' } as const;
+  const count = (assignees: string[]) => selectListPage(data, U.alice, L.backlog, { sort, assignees }).data?.total;
+
+  it('no filter returns every task', () => expect(count([])).toBe(12));
+  it('one person', () => expect(count([U.carol])).toBe(1));
+  it('several people match any of them', () => {
+    expect(count([U.alice])).toBe(3);
+    expect(count([U.alice, U.carol])).toBe(4);
+  });
+  it('"Unassigned" matches tasks with nobody assigned, alone or with people', () => {
+    expect(count([UNASSIGNED])).toBe(3);
+    expect(count([U.carol, UNASSIGNED])).toBe(4);
+  });
+  it('still returns 403 for a list the user cannot see', () => {
+    expect(selectListPage(data, U.carol, L.sprint, { sort, assignees: [U.bob] }).error?.code).toBe('FORBIDDEN');
   });
 });

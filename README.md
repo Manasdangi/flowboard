@@ -248,15 +248,15 @@ Two libraries also set inline positioning themselves (I didn't write it): dnd-ki
 
 ## 8. Testing
 
-| Kind          | File                             | Tests | What it covers                                                                                                                           |
-| ------------- | -------------------------------- | :---: | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Permissions   | `src/domain/permissions.test.ts` |  20   | Access rules, tree filtering per user, "Shared with me", breadcrumbs, 403s from selectors, search never leaking                          |
-| Store         | `src/store/appStore.test.ts`     |  20   | Every mutation, validation, 403s on writes, reordering, optimistic save + rollback                                                       |
-| Components    | `src/test/App.test.tsx`          |  17   | The full app in jsdom: user switching, 403 screen, members trying admin actions, workspace rename, drawer, list sorting, assignee picker |
-| Browser (E2E) | `e2e/flowboard.spec.ts`          |   4   | Real mouse drag-and-drop, persistence after reload, rollback, Alice vs Bob                                                               |
+| Kind          | File                             | Tests | What it covers                                                                                                                                                                            |
+| ------------- | -------------------------------- | :---: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Permissions   | `src/domain/permissions.test.ts` |  25   | Access rules, tree filtering per user, "Shared with me", breadcrumbs, 403s from selectors, search never leaking, assignee filter                                                          |
+| Store         | `src/store/appStore.test.ts`     |  20   | Every mutation, validation, 403s on writes, reordering, optimistic save + rollback                                                                                                        |
+| Components    | `src/test/App.test.tsx`          |  23   | The full app in jsdom: user switching, 403 screen, members trying admin actions, workspace rename, draft discard, archive dialog, drawer, list sorting + assignee filter, assignee picker |
+| Browser (E2E) | `e2e/flowboard.spec.ts`          |   4   | Real mouse drag-and-drop, persistence after reload, rollback, Alice vs Bob                                                                                                                |
 
 ```bash
-npm test                          # unit + component (57 tests)
+npm test                          # unit + component (68 tests)
 npx vitest run src/domain         # one folder
 npx vitest run -t "rolls back"    # tests whose name matches
 npm run test:e2e                  # browser tests (run `npx playwright install chromium` once first)
@@ -273,6 +273,7 @@ npm run test:e2e                  # browser tests (run `npx playwright install c
 - **Native `<select>` and `<input type="date">` in the drawer.** Accessible and robust, but less polished than custom dropdowns and date pickers.
 - **Status editing** covers add, rename, recolour, change category and delete, but not reordering columns by drag. Deleting a status that tasks still use is refused (`CONFLICT`) rather than silently moving those tasks.
 - **Search is a ⌘K palette**, not a filter on the current view. **Pagination** is "load more" over in-memory data (page size 10; Backlog has 12 tasks, so you can see it).
+- **Assignee filter is list-view only.** The list view can show tasks for one or more people (or unassigned). The board doesn't filter on purpose: hiding cards mid-drag would make drop positions relative to a partial column.
 - **Desktop-first:** a 960 px minimum width and no dark mode (both out of scope).
 - **Bundle** is about 157 kB gzipped, mostly React DOM and Headless UI, with no code splitting.
 

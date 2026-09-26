@@ -12,15 +12,20 @@ export type ContainerDialog =
 interface UiState {
   searchOpen: boolean;
   dialog: ContainerDialog | null;
+  /** Task just created by "New task"; discarded on drawer close if left untouched. */
+  draftTaskId: ID | null;
   setSearchOpen: (open: boolean) => void;
   openDialog: (dialog: ContainerDialog | null) => void;
+  setDraftTaskId: (id: ID | null) => void;
 }
 
 export const uiStore = createStore<UiState>((set) => ({
   searchOpen: false,
   dialog: null,
+  draftTaskId: null,
   setSearchOpen: (searchOpen) => set({ searchOpen }),
   openDialog: (dialog) => set({ dialog }),
+  setDraftTaskId: (draftTaskId) => set({ draftTaskId }),
 }));
 
 export const useUi = <T>(selector: (s: UiState) => T) => useStore(uiStore, selector);

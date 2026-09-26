@@ -13,13 +13,15 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { selectTaskDetail, type TaskDetail } from '@/domain/selectors';
-import { PRIORITIES, TITLE_MAX } from '@/domain/tasks';
+import { PRIORITIES, subtasksOf, TITLE_MAX } from '@/domain/tasks';
 import type { ID, Priority } from '@/domain/types';
 import { cn } from '@/lib/cn';
 import { formatRelative, fromDateInput, toDateInput } from '@/lib/dates';
 import { useRoute } from '@/lib/router';
 import { useActions, useAppStore, useData } from '@/store/hooks';
 import { notify } from '@/store/toasts';
+import { useAppStoreApi } from '@/store/context';
+import { uiStore } from '@/store/ui';
 import { PRIORITY_STYLES, STATUS_STYLES } from '@/ui/tokens';
 import { Button, IconButton } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
@@ -39,7 +41,25 @@ export function TaskDrawer() {
   const taskId = route.taskId;
   const detail = useMemo(() => (taskId ? selectTaskDetail(data, userId, taskId) : null), [data, userId, taskId]);
 
-  const close = () => navigate({ taskId: null });
+  const { deleteTask } = useActions();
+  const store = useAppStoreApi();
+
+  const close = () => {
+    discardUntouchedDraft();
+    navigate({ taskId: null });
+  };
+
+  /** A task made by "New task" and closed without any edit is thrown away, like a blank draft. */
+  const discardUntouchedDraft = () => {
+    const { draftTaskId, setDraftTaskId } = uiStore.getState();
+    if (!draftTaskId) return;
+    setDraftTaskId(null);
+    // Read live state, not this render's `data`: the draft may have just been deleted from the drawer.
+    const current = store.getState().data;
+    const draft = current.tasks[draftTaskId];
+    const untouched = draft && draft.updatedAt === draft.createdAt && subtasksOf(current, draft.id).length === 0;
+    if (untouched) deleteTask(draft.id);
+  };
 
   return (
     <Dialog open={!!taskId} onClose={close} className="relative z-40">
@@ -215,48 +235,33 @@ function DrawerContent({
 
         <dl className="mt-5 grid grid-cols-[7.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 text-sm">
           <Prop icon={<CircleDot className="h-3.5 w-3.5" />} label="Status">
-            <div className="relative">
-              {status && (
-                <StatusIcon
-                  category={status.category}
-                  className={cn('pointer-events-none absolute left-2.5 top-2.5', statusStyles?.text)}
-                />
-              )}
-              <Select
-                aria-label="Status"
-                value={task.statusId}
-                className="pl-8 font-medium"
-                onChange={(e) => updateTask(task.id, { statusId: e.target.value })}
-              >
-                {statuses.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
+            <Select
+              aria-label="Status"
+              value={task.statusId}
+              className="font-medium"
+              leading={status && <StatusIcon category={status.category} className={statusStyles?.text} />}
+              onChange={(e) => updateTask(task.id, { statusId: e.target.value })}
+            >
+              {statuses.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
           </Prop>
           <Prop icon={<Flag className="h-3.5 w-3.5" />} label="Priority">
-            <div className="relative">
-              <Flag
-                className={cn(
-                  'pointer-events-none absolute left-2.5 top-2.5 h-3.5 w-3.5',
-                  PRIORITY_STYLES[task.priority].icon,
-                )}
-              />
-              <Select
-                aria-label="Priority"
-                value={task.priority}
-                className="pl-8"
-                onChange={(e) => updateTask(task.id, { priority: e.target.value as Priority })}
-              >
-                {PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {PRIORITY_STYLES[p].label}
-                  </option>
-                ))}
-              </Select>
-            </div>
+            <Select
+              aria-label="Priority"
+              value={task.priority}
+              leading={<Flag className={cn('h-3.5 w-3.5', PRIORITY_STYLES[task.priority].icon)} />}
+              onChange={(e) => updateTask(task.id, { priority: e.target.value as Priority })}
+            >
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {PRIORITY_STYLES[p].label}
+                </option>
+              ))}
+            </Select>
           </Prop>
           <Prop icon={<Users className="h-3.5 w-3.5" />} label="Assignees">
             <AssigneePicker

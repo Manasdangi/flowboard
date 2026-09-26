@@ -49,6 +49,59 @@ describe('App — permissions in the UI', () => {
   });
 });
 
+describe('App — "New task" drafts', () => {
+  const untitled = (store: ReturnType<typeof renderApp>['store']) =>
+    Object.values(store.getState().data.tasks).filter((t) => t.title === 'Untitled task');
+
+  it('discards an untouched draft when the drawer closes', async () => {
+    const { user, store } = renderApp({ route: { listId: L.backlog } });
+    await screen.findByTestId('board');
+    await user.click(screen.getByRole('button', { name: 'New task' }));
+    await screen.findByTestId('task-drawer');
+    expect(untitled(store)).toHaveLength(1);
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByTestId('task-drawer')).not.toBeInTheDocument());
+    expect(untitled(store)).toHaveLength(0);
+  });
+
+  it('keeps the draft once any field is edited', async () => {
+    const { user, store } = renderApp({ route: { listId: L.backlog } });
+    await screen.findByTestId('board');
+    await user.click(screen.getByRole('button', { name: 'New task' }));
+    const drawer = await screen.findByTestId('task-drawer');
+    await user.selectOptions(within(drawer).getByLabelText('Priority'), 'high');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByTestId('task-drawer')).not.toBeInTheDocument());
+    expect(untitled(store)).toHaveLength(1);
+  });
+
+  it('deleting a draft from the drawer shows no error', async () => {
+    const { user, store } = renderApp({ route: { listId: L.backlog } });
+    await screen.findByTestId('board');
+    await user.click(screen.getByRole('button', { name: 'New task' }));
+    const drawer = await screen.findByTestId('task-drawer');
+    await user.click(within(drawer).getByRole('button', { name: 'Delete task' }));
+    await user.click(within(drawer).getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(screen.queryByTestId('task-drawer')).not.toBeInTheDocument());
+    expect(untitled(store)).toHaveLength(0);
+    expect(screen.queryByText(/not found/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('App — archive dialog', () => {
+  it.each([
+    ['Sprint 14', 'It will disappear for everyone, along with 7 tasks.'],
+    ['Marketing', 'It will disappear for everyone, along with 3 nested items and 7 tasks.'],
+  ])('describes what archiving "%s" hides, counting tasks like the sidebar', async (name, text) => {
+    const { user } = renderApp({ route: { listId: L.backlog } });
+    await screen.findByTestId('board');
+    await user.click(within(tree()).getByRole('button', { name: `${name} options` }));
+    await user.click(await screen.findByRole('menuitem', { name: /Archive/ }));
+    expect(await screen.findByText(new RegExp(text.replace(/\./g, '\\.')))).toBeInTheDocument();
+  });
+});
+
 describe('App — workspace rename', () => {
   it('lets an admin rename the workspace from the sidebar header', async () => {
     const { user, store } = renderApp({ route: { listId: L.backlog } });
@@ -165,6 +218,28 @@ describe('App — board, list and drawer', () => {
     // Carol is denied on Sprint 14, so she is never offered.
     expect(await screen.findByText(/No one with access to this list matches/)).toBeInTheDocument();
     expect(screen.queryByRole('option')).not.toBeInTheDocument();
+  });
+
+  it('list view filters by one or more assignees', async () => {
+    const { user } = renderApp({ route: { listId: L.backlog, view: 'list' } });
+    const table = await screen.findByTestId('task-table');
+    const rows = () =>
+      within(table)
+        .queryAllByTestId('task-row')
+        .map((r) => r.getAttribute('aria-label'));
+
+    await user.click(screen.getByRole('button', { name: 'Filter by assignee' }));
+    await user.click(await screen.findByRole('option', { name: /Carol Singh/ }));
+    expect(rows()).toEqual(['Write migration guide from spreadsheets']);
+    expect(screen.getByRole('button', { name: 'Filter by assignee' })).toHaveTextContent('Carol');
+
+    await user.click(screen.getByRole('option', { name: /Unassigned/ }));
+    expect(rows()).toHaveLength(4);
+    expect(screen.getByText(/filtered by assignee/)).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Clear assignee filter' }));
+    expect(rows()).toHaveLength(10); // first page again
   });
 
   it('list view sorts by due date and paginates', async () => {

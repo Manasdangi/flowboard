@@ -104,16 +104,30 @@ export interface ListPage {
   subtaskProgress: BoardModel['subtaskProgress'];
 }
 
+/** Filter value meaning "tasks with no assignee", usable alongside user ids. */
+export const UNASSIGNED = 'unassigned';
+
+/** Empty filter = everything; otherwise a task matches if ANY chosen person is assigned (or it's unassigned and that's chosen). */
+function matchesAssignees(task: Task, filter: string[]): boolean {
+  if (filter.length === 0) return true;
+  if (task.assigneeIds.length === 0) return filter.includes(UNASSIGNED);
+  return task.assigneeIds.some((id) => filter.includes(id));
+}
+
 export function selectListPage(
   data: DataState,
   userId: ID,
   listId: ID,
-  opts: { sort: SortSpec; offset?: number; limit?: number; query?: string },
+  opts: { sort: SortSpec; offset?: number; limit?: number; query?: string; assignees?: string[] },
 ): Result<ListPage> {
   const denied = guardViewList(data, userId, listId);
   if (denied) return { error: denied };
   const all = Object.values(data.tasks).filter(
-    (t) => t.primaryListId === listId && !t.parentTaskId && matchesQuery(t, opts.query ?? ''),
+    (t) =>
+      t.primaryListId === listId &&
+      !t.parentTaskId &&
+      matchesQuery(t, opts.query ?? '') &&
+      matchesAssignees(t, opts.assignees ?? []),
   );
   const sorted = sortTasks(all, opts.sort, data.statuses);
   const offset = opts.offset ?? 0;

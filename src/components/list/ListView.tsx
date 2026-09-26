@@ -1,5 +1,6 @@
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ListChecks, Plus } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ListChecks, Plus } from 'lucide-react';
 import { useMemo, useState, type KeyboardEvent } from 'react';
+import { usersWithAccess } from '@/domain/permissions';
 import { selectListPage, type SortKey, type SortSpec } from '@/domain/selectors';
 import { TITLE_MAX } from '@/domain/tasks';
 import type { ID } from '@/domain/types';
@@ -9,6 +10,7 @@ import { FOCUS_RING, STATUS_STYLES } from '@/ui/tokens';
 import { AvatarStack } from '../ui/Avatar';
 import { DueDate, PriorityBadge, StatusIcon, StatusPill } from '../ui/Badges';
 import { Button } from '../ui/Button';
+import { AssigneeFilter } from './AssigneeFilter';
 
 const PAGE_SIZE = 10;
 
@@ -27,11 +29,13 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
   const userId = useAppStore((s) => s.currentUserId);
   const [sort, setSort] = useState<SortSpec>({ key: 'manual', dir: 'asc' });
   const [pages, setPages] = useState(1);
+  const [assignees, setAssignees] = useState<string[]>([]);
+  const people = useMemo(() => usersWithAccess(data, listId), [data, listId]);
 
   // Offset pagination over in-memory data: we ask the store for the first N pages.
   const page = useMemo(
-    () => selectListPage(data, userId, listId, { sort, offset: 0, limit: pages * PAGE_SIZE }),
-    [data, userId, listId, sort, pages],
+    () => selectListPage(data, userId, listId, { sort, offset: 0, limit: pages * PAGE_SIZE, assignees }),
+    [data, userId, listId, sort, pages, assignees],
   );
   if (page.error) return null; // ListScreen renders the 403 state before we get here.
   const { rows, total, nextOffset, subtaskProgress } = page.data;
@@ -46,8 +50,16 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
     });
   };
 
+  const filterBy = (ids: string[]) => {
+    setAssignees(ids);
+    setPages(1); // a new filter starts back at the first page
+  };
+
   return (
     <div className="h-full overflow-y-auto px-6 pb-8 pt-4">
+      <div className="mb-3 flex items-center">
+        <AssigneeFilter people={people} selected={assignees} onChange={filterBy} />
+      </div>
       <div className="overflow-hidden rounded-panel bg-surface shadow-card">
         <table className="w-full table-fixed border-collapse text-sm" data-testid="task-table">
           <thead className="sticky top-0 z-10 bg-surface-muted">
@@ -155,13 +167,23 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
             })}
           </tbody>
         </table>
+        {rows.length === 0 && assignees.length > 0 && (
+          <div className="flex items-center justify-center gap-3 border-t border-line px-4 py-8 text-sm text-ink-subtle">
+            No tasks match this assignee filter.
+            <Button size="sm" variant="ghost" onClick={() => filterBy([])}>
+              Clear filter
+            </Button>
+          </div>
+        )}
         <InlineCreate listId={listId} />
       </div>
 
-      <div className="mt-3 flex items-center justify-between text-xs text-ink-subtle">
+      {/* Three columns so "Load more" sits in the true centre while the count stays left. */}
+      <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-xs text-ink-subtle">
         <span>
           Showing <span className="font-semibold tabular-nums text-ink-muted">{rows.length}</span> of{' '}
           <span className="font-semibold tabular-nums text-ink-muted">{total}</span> tasks
+          {assignees.length > 0 && <> · filtered by assignee</>}
           {sort.key !== 'manual' && (
             <>
               {' '}
@@ -172,7 +194,7 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
         </span>
         {nextOffset !== null && (
           <Button size="sm" onClick={() => setPages((p) => p + 1)}>
-            <ChevronDown className="h-3.5 w-3.5" /> Load {Math.min(PAGE_SIZE, total - nextOffset)} more
+            Load {Math.min(PAGE_SIZE, total - nextOffset)} more
           </Button>
         )}
       </div>

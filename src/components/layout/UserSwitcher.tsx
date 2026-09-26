@@ -41,7 +41,7 @@ export function UserSwitcher() {
         <Avatar user={current} size="md" />
         <span className="hidden flex-col items-start leading-none sm:flex">
           <span className="text-2xs font-medium text-ink-subtle">Viewing as</span>
-          <span className="mt-0.5 text-sm font-semibold text-ink">{current.name.split(' ')[0]}</span>
+          <span className="mt-0.5 text-xs font-semibold text-ink">{current.name.split(' ')[0]}</span>
         </span>
         <RoleBadge role={current.role} />
         <ChevronDown className="h-3.5 w-3.5 text-ink-subtle" />

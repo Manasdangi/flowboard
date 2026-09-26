@@ -127,7 +127,10 @@ export function ListScreen() {
           variant="primary"
           onClick={() => {
             const result = createTask({ listId: list.id, title: 'Untitled task' });
-            if (result.data) openTask(result.data.id);
+            if (result.data) {
+              uiStore.getState().setDraftTaskId(result.data.id);
+              openTask(result.data.id);
+            }
           }}
         >
           <Plus className="h-3.5 w-3.5" /> New task

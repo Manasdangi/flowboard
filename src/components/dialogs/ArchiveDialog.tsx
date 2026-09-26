@@ -13,7 +13,13 @@ export function ArchiveDialog({ containerId, onClose }: { containerId: ID; onClo
   if (!container) return null;
   const inside = descendantIds(data, containerId).map((id) => data.containers[id]);
   const listIds = new Set([containerId, ...inside.map((c) => c.id)]);
-  const taskCount = Object.values(data.tasks).filter((t) => listIds.has(t.primaryListId)).length;
+  // Top-level tasks only, so the number matches the sidebar's task counts.
+  const taskCount = Object.values(data.tasks).filter((t) => listIds.has(t.primaryListId) && !t.parentTaskId).length;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const alongWith = [
+    inside.length > 0 && plural(inside.length, 'nested item'),
+    taskCount > 0 && plural(taskCount, 'task'),
+  ].filter(Boolean);
 
   const confirm = () => {
     const result = archiveContainer(containerId);
@@ -40,19 +46,8 @@ export function ArchiveDialog({ containerId, onClose }: { containerId: ID; onClo
       }
     >
       <p className="text-sm text-ink-muted">
-        It will disappear for everyone
-        {inside.length > 0 && (
-          <>
-            , along with {inside.length} nested item{inside.length === 1 ? '' : 's'}
-          </>
-        )}
-        {taskCount > 0 && (
-          <>
-            {' '}
-            and {taskCount} task{taskCount === 1 ? '' : 's'}
-          </>
-        )}
-        . Nothing is deleted — admins can restore it.
+        It will disappear for everyone{alongWith.length > 0 && `, along with ${alongWith.join(' and ')}`}. Nothing is
+        deleted — admins can restore it.
       </p>
     </Modal>
   );
