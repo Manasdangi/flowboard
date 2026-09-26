@@ -20,7 +20,7 @@ There's **no backend**: a typed Zustand store, seeded with demo data, plays the 
 **Stretch goals attempted (2):** ① optimistic drag-and-drop with rollback on failure · ② client-side search on task title and description (⌘K or `/`)
 
 🔗 **Live demo:** [flowboard-delta-ruddy.vercel.app](https://flowboard-delta-ruddy.vercel.app/)
-🎥 **Demo video:** _add link_
+🎥 **Demo video:** [Watch on Loom (about 4 min)](https://www.loom.com/share/aad3f361ffb94ce2884d534543534981)
 
 ---
 
