@@ -15,7 +15,7 @@ const column = (page: Page, name: string) => page.getByTestId(`column-${name}`);
 const tree = (page: Page) => page.getByRole('tree', { name: 'Workspace' });
 
 test('kanban drag changes status and survives a reload', async ({ page }) => {
-  await page.goto('/#/list/ls_sprint/board');
+  await page.goto('/list/ls_sprint/board');
   const card = column(page, 'To do').getByRole('button', { name: 'Task detail drawer with focus trap' });
   await drag(page, card, column(page, 'In review'));
 
@@ -32,7 +32,7 @@ test('kanban drag changes status and survives a reload', async ({ page }) => {
 });
 
 test('failed save rolls the card back with a toast', async ({ page }) => {
-  await page.goto('/#/list/ls_security/board');
+  await page.goto('/list/ls_security/board');
   await page.getByTestId('user-switcher').click();
   await page.getByRole('menuitem', { name: /Simulate save failures/ }).click();
 
@@ -47,7 +47,7 @@ test('failed save rolls the card back with a toast', async ({ page }) => {
 });
 
 test('Alice vs Bob: tree filtering and 403', async ({ page }) => {
-  await page.goto('/#/list/ls_campaigns/board');
+  await page.goto('/list/ls_campaigns/board');
   await expect(tree(page).getByText('Campaigns')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Campaigns' })).toBeVisible();
 
@@ -63,7 +63,7 @@ test('Alice vs Bob: tree filtering and 403', async ({ page }) => {
 });
 
 test('reorders sidebar siblings by drag (admin)', async ({ page }) => {
-  await page.goto('/#/list/ls_backlog/board');
+  await page.goto('/list/ls_backlog/board');
   const order = async () => {
     const text = await tree(page).innerText();
     return ['Backlog', 'Sprint 14', 'Security Audit'].sort((a, b) => text.indexOf(a) - text.indexOf(b));

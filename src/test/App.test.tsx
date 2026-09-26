@@ -165,7 +165,7 @@ describe('App — board, list and drawer', () => {
 
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByTestId('task-drawer')).not.toBeInTheDocument());
-    expect(window.location.hash).not.toContain('task=');
+    expect(window.location.search).not.toContain('task=');
   });
 
   it('changing status in the drawer moves the card to that column', async () => {

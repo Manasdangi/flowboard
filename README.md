@@ -45,16 +45,16 @@ More commands, the pre-commit hook and editor setup are in [11. Development](#11
 
 The brief says _"We evaluate your judgment"_, so here's the reasoning behind each choice:
 
-| Choice                                               | Why                                                                                                                                                                                                      |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **React** (the brief allows Vue 3 or React)          | dnd-kit is the most mature drag-and-drop library for multi-column kanban with keyboard support. All business logic is framework-free (below), so moving to Vue would only mean rewriting the components. |
-| **A pure `domain/` layer**                           | Permissions and mutations are plain TypeScript functions: `(state, user, input) → Result`. They're easy to unit-test, can't be bypassed by the UI, and could run unchanged on a server later.            |
-| **Zustand** (the brief lists it)                     | Store + actions with almost no boilerplate. Its vanilla `createStore` lets every test create a fresh, isolated store.                                                                                    |
-| **dnd-kit**                                          | Sortable lists across containers, a drag overlay for the preview, and pointer + keyboard sensors. It needs only an inline `transform`, which the brief allows as an exception.                           |
-| **Headless UI** (the brief's own example)            | Accessible dialogs, menus and comboboxes, with focus trapping, Escape to close and ARIA roles built in. It's unstyled, so all styling stays in Tailwind.                                                 |
-| **Hash routing**                                     | Every list and task gets a shareable URL with no server config. It also makes "open a list you can't access" easy to reproduce by pasting a URL.                                                         |
-| **localStorage persistence** (optional in the brief) | A drag that's lost on refresh feels broken, so changes survive a reload. The saved data is versioned, so a shape change can't break old saves.                                                           |
-| **Vitest + Testing Library + Playwright**            | Fast unit and component tests in jsdom, plus a real browser for what jsdom can't do: real mouse drag-and-drop and reload persistence.                                                                    |
+| Choice                                               | Why                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **React** (the brief allows Vue 3 or React)          | dnd-kit is the most mature drag-and-drop library for multi-column kanban with keyboard support. All business logic is framework-free (below), so moving to Vue would only mean rewriting the components.                                                                                                                                                        |
+| **A pure `domain/` layer**                           | Permissions and mutations are plain TypeScript functions: `(state, user, input) → Result`. They're easy to unit-test, can't be bypassed by the UI, and could run unchanged on a server later.                                                                                                                                                                   |
+| **Zustand** (the brief lists it)                     | Store + actions with almost no boilerplate. Its vanilla `createStore` lets every test create a fresh, isolated store.                                                                                                                                                                                                                                           |
+| **dnd-kit**                                          | Sortable lists across containers, a drag overlay for the preview, and pointer + keyboard sensors. It needs only an inline `transform`, which the brief allows as an exception.                                                                                                                                                                                  |
+| **Headless UI** (the brief's own example)            | Accessible dialogs, menus and comboboxes, with focus trapping, Escape to close and ARIA roles built in. It's unstyled, so all styling stays in Tailwind.                                                                                                                                                                                                        |
+| **Path-based URLs** (`/list/<id>/<view>?task=<id>`)  | Every list and task has a shareable URL, the same shape Linear, Jira and ClickUp use, which also makes "open a list you can't access" easy to reproduce by pasting a link. A refresh or deep link asks the server for that path, so the host must serve `index.html` for unknown paths: Vite does this in dev and preview, and `vercel.json` does it on Vercel. |
+| **localStorage persistence** (optional in the brief) | A drag that's lost on refresh feels broken, so changes survive a reload. The saved data is versioned, so a shape change can't break old saves.                                                                                                                                                                                                                  |
+| **Vitest + Testing Library + Playwright**            | Fast unit and component tests in jsdom, plus a real browser for what jsdom can't do: real mouse drag-and-drop and reload persistence.                                                                                                                                                                                                                           |
 
 ---
 
@@ -98,7 +98,7 @@ flowchart LR
   AS -- "moveTask: await save" --> TR
   AS -- subscribe --> PE
   AS -- "onError → toast" --> TO
-  URL["hash router<br/>#/list/:id/:view?task=:id"] <--> LS & TD
+  URL["path router<br/>/list/:id/:view?task=:id"] <--> LS & TD
 ```
 
 - **Domain (`src/domain/`)** holds the rules. Every change is a **pure function** that takes the current data and returns new data or an error. Every read is a **selector** that takes the current user and returns only what that user may see. There's no React and no store library here, which is why it's easy to test.
@@ -252,11 +252,12 @@ Two libraries also set inline positioning themselves (I didn't write it): dnd-ki
 | ------------- | -------------------------------- | :---: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Permissions   | `src/domain/permissions.test.ts` |  25   | Access rules, tree filtering per user, "Shared with me", breadcrumbs, 403s from selectors, search never leaking, assignee filter                                                          |
 | Store         | `src/store/appStore.test.ts`     |  20   | Every mutation, validation, 403s on writes, reordering, optimistic save + rollback                                                                                                        |
+| Router        | `src/lib/router.test.ts`         |   3   | Clean paths, navigation, popstate notifications                                                                                                                                           |
 | Components    | `src/test/App.test.tsx`          |  23   | The full app in jsdom: user switching, 403 screen, members trying admin actions, workspace rename, draft discard, archive dialog, drawer, list sorting + assignee filter, assignee picker |
 | Browser (E2E) | `e2e/flowboard.spec.ts`          |   4   | Real mouse drag-and-drop, persistence after reload, rollback, Alice vs Bob                                                                                                                |
 
 ```bash
-npm test                          # unit + component (68 tests)
+npm test                          # unit + component (71 tests)
 npx vitest run src/domain         # one folder
 npx vitest run -t "rolls back"    # tests whose name matches
 npm run test:e2e                  # browser tests (run `npx playwright install chromium` once first)

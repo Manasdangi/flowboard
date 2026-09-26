@@ -53,7 +53,7 @@ Rules for this layer:
 - Read with `useAppStore` / `useData` plus a memoized selector. Write with `useActions()`.
 - Handle every state the brief expects: **loading** (skeletons in `ui/Skeleton.tsx`), **empty** (`ui/EmptyState`), **error / 403**, and **hover / focus / active**.
 - Styling follows the `flowboard-ui` skill (tokens only, no `style=`).
-- Deep-linkable state goes in the hash route (`lib/router.ts`).
+- Deep-linkable state goes in the URL path/query (`lib/router.ts`).
 
 ## 5. Tests (all required)
 

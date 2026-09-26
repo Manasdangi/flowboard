@@ -40,7 +40,7 @@ src/store/
   hooks.ts         useAppStore, useActions, useData, useCurrentUser, useIsAdmin
 src/components/    React UI, grouped by area (board/, list/, task/, sidebar/, dialogs/, layout/, search/, ui/)
 src/ui/tokens.ts   status / priority / avatar class maps (the single source of truth)
-src/lib/           router (hash routes), dates, cn (clsx + tailwind-merge)
+src/lib/           router (path routes via the History API), dates, cn (clsx + tailwind-merge)
 ```
 
 Data flow: component → `useActions().x()` → `commit(domainFn(get().data, actorId, input, now))`. On success it commits the new state; on `{ error }` it calls `onError`, which shows a toast. Reads: `useMemo(() => selectX(data, userId, …), [data, userId, …])`.

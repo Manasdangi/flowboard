@@ -28,7 +28,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.on('pageerror', (e) => console.log('pageerror:', e.message)); // blank page? look here first
 page.on('console', (m) => m.type() === 'error' && console.log('console:', m.text()));
-await page.goto('http://localhost:5173/#/list/ls_sprint/board');
+await page.goto('http://localhost:5173/list/ls_sprint/board');
 await page.waitForTimeout(1500); // simulated latency + skeleton
 await page.screenshot({ path: `${OUT}/board.png` });
 await browser.close();
@@ -42,10 +42,10 @@ Each browser context starts with empty `localStorage`, so screenshots always sho
 
 | What              | URL / id                                                                                                                                       |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Board / list view | `#/list/<listId>/board`, `#/list/<listId>/list`                                                                                                |
-| Open the drawer   | append `?task=<taskId>`, e.g. `#/list/ls_backlog/board?task=t_bl_6`                                                                            |
+| Board / list view | `/list/<listId>/board`, `/list/<listId>/list`                                                                                                  |
+| Open the drawer   | append `?task=<taskId>`, e.g. `/list/ls_backlog/board?task=t_bl_6`                                                                             |
 | Lists             | `ls_backlog`, `ls_sprint` (Carol denied), `ls_security` (private, Bob allowed), `ls_campaigns` (Marketing, private), `ls_launch` (Bob allowed) |
-| 403 demo          | switch to Bob, then open `#/list/ls_campaigns/board`                                                                                           |
+| 403 demo          | switch to Bob, then open `/list/ls_campaigns/board`                                                                                            |
 
 ## 4. Common interactions
 

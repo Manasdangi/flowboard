@@ -30,7 +30,7 @@ Each entry lists the data, rules, store, UI and tests needed, so it can be imple
 
 ## 4. Deployed preview
 
-- Vercel: build command `npm run build`, output `dist/`. Hash routing means no rewrite rules are needed.
+- Vercel: build command `npm run build`, output `dist/`. `vercel.json` already rewrites every path to `index.html`, so deep links survive refresh.
 - Put the URL at the top of `README.md`.
 
 ## 5. Storybook for key components
