@@ -2,12 +2,24 @@
 
 A mini project-management app for one team. Organise work into **spaces → folders → lists**, manage tasks on a **kanban board** or in a **list view**, and control **who can see what**. A built-in user switcher shows the difference.
 
+<table>
+<tr>
+<td width="50%"><img src="./docs/screenshot.png" alt="Kanban board, viewed as admin Alice" /><br /><sub><b>Kanban board</b> — Sprint 14, viewed as Alice (admin)</sub></td>
+<td width="50%"><img src="./docs/screenshot-drawer.png" alt="Task detail drawer" /><br /><sub><b>Task drawer</b> — status, priority, multiple assignees, due date, subtasks</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="./docs/screenshot-list.png" alt="List view" /><br /><sub><b>List view</b> — sortable columns, assignee filter, pagination</sub></td>
+<td width="50%"><img src="./docs/screenshot-403.png" alt="Permission denied screen for Bob" /><br /><sub><b>Permissions</b> — Bob (member) hits a clean 403; nothing forbidden leaks</sub></td>
+</tr>
+</table>
+
 There's **no backend**: a typed Zustand store, seeded with demo data, plays the role of the API and database.
 
 **Stack:** React 18 · TypeScript (strict) · Vite 5 · Tailwind CSS 3 · Zustand · dnd-kit · Headless UI · Vitest + Testing Library · Playwright
 
 **Stretch goals attempted (2):** ① optimistic drag-and-drop with rollback on failure · ② client-side search on task title and description (⌘K or `/`)
 
+🔗 **Live demo:** [flowboard-delta-ruddy.vercel.app](https://flowboard-delta-ruddy.vercel.app/)
 🎥 **Demo video:** _add link_
 
 ---
@@ -286,7 +298,7 @@ npm run test:e2e                  # browser tests (run `npx playwright install c
 4. Bulk select, with bulk status and assignee changes in the list view.
 5. Virtualized columns and rows for very large lists.
 6. Storybook for cards, pills and badges, visual regression tests, and an accessibility (axe) pass in Playwright.
-7. A deployed preview (Vercel) with the whole test suite running in CI.
+7. CI running the full test suite on every push (the app itself is already deployed to Vercel — see the live demo link at the top).
 
 Detailed designs for these are in [`.claude/skills/flowboard-feature/reference/roadmap.md`](./.claude/skills/flowboard-feature/reference/roadmap.md).
 
