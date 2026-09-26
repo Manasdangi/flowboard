@@ -19,7 +19,8 @@ There's **no backend**: a typed Zustand store, seeded with demo data, plays the 
 
 **Stretch goals attempted (2):** ① optimistic drag-and-drop with rollback on failure · ② client-side search on task title and description (⌘K or `/`)
 
-🔗 **Live demo:** [flowboard-delta-ruddy.vercel.app](https://flowboard-delta-ruddy.vercel.app/)
+🔗 **Deployed link:** [flowboard-delta-ruddy.vercel.app](https://flowboard-delta-ruddy.vercel.app/)
+
 🎥 **Demo video:** [Watch on Loom (about 4 min)](https://www.loom.com/share/aad3f361ffb94ce2884d534543534981)
 
 ---
@@ -286,7 +287,7 @@ npm run test:e2e                  # browser tests (run `npx playwright install c
 4. Bulk select, with bulk status and assignee changes in the list view.
 5. Virtualized columns and rows for very large lists.
 6. Storybook for cards, pills and badges, visual regression tests, and an accessibility (axe) pass in Playwright.
-7. CI running the full test suite on every push (the app itself is already deployed to Vercel — see the live demo link at the top).
+7. CI running the full test suite on every push (the app itself is already deployed to Vercel — see the deployed link at the top).
 
 Detailed designs for these are in [`.claude/skills/flowboard-feature/reference/roadmap.md`](./.claude/skills/flowboard-feature/reference/roadmap.md).
 
