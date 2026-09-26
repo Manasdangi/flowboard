@@ -75,42 +75,30 @@ The brief says _"We evaluate your judgment"_, so here's the reasoning behind eac
 ### The three layers
 
 ```mermaid
-flowchart LR
+flowchart TD
   subgraph UI["React components (Tailwind only)"]
-    SB[Sidebar / SidebarTree<br/>dnd-kit sibling reorder]
-    TB[TopBar + UserSwitcher]
-    LS[ListScreen<br/>skeleton · 403 · empty]
-    BV[BoardView<br/>dnd-kit kanban]
-    LV[ListView<br/>sort + pagination]
-    TD[TaskDrawer<br/>Headless UI Dialog]
-    SP[SearchPalette ⌘K]
-    DLG[Create / Share / Statuses / Archive dialogs]
-    TO[Toaster]
+    Views["Sidebar · TopBar/UserSwitcher · ListScreen<br/>BoardView · ListView · TaskDrawer<br/>SearchPalette · dialogs · Toaster"]
   end
 
   subgraph Store["Client data layer"]
-    AS["appStore (Zustand)<br/>data · currentUserId · boot · loadingListId · pendingTaskIds"]
+    AS["appStore (Zustand)<br/>data · currentUserId · loadingListId · pendingTaskIds"]
     TR["transport.ts<br/>fake latency / failure"]
     PE["persistence.ts<br/>localStorage"]
-    UI2["ui.ts / toasts.ts<br/>ephemeral UI state"]
   end
 
   subgraph Domain["Pure domain (framework-free, unit tested)"]
-    PM["permissions.ts<br/>resolveAccess · guards"]
-    SEL["selectors.ts / tree.ts<br/>board · list page · detail · search · tree"]
     MUT["tasks.ts · containers.ts · statuses.ts<br/>(state, actor, input) → Result"]
+    SEL["selectors.ts · tree.ts<br/>board · list page · detail · search"]
+    PM["permissions.ts<br/>resolveAccess · guards"]
   end
 
-  UI -- "useAppStore(selector)" --> AS
-  UI -- "selectX(data, userId, …)" --> SEL
-  UI -- "actions.*()" --> AS
-  AS --> MUT
+  Views -- "actions.*()  /  useAppStore(selector)" --> AS
+  AS -- commit --> MUT
+  AS -- read --> SEL
   MUT --> PM
   SEL --> PM
-  AS -- "moveTask: await save" --> TR
-  AS -- subscribe --> PE
-  AS -- "onError → toast" --> TO
-  URL["path router<br/>/list/:id/:view?task=:id"] <--> LS & TD
+  AS -. "await save" .-> TR
+  AS -. subscribe .-> PE
 ```
 
 - **Domain (`src/domain/`)** holds the rules. Every change is a **pure function** that takes the current data and returns new data or an error. Every read is a **selector** that takes the current user and returns only what that user may see. There's no React and no store library here, which is why it's easy to test.
