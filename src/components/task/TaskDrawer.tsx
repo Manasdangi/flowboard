@@ -13,14 +13,13 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { selectTaskDetail, type TaskDetail } from '@/domain/selectors';
-import { PRIORITIES, subtasksOf, TITLE_MAX } from '@/domain/tasks';
+import { PRIORITIES, TITLE_MAX } from '@/domain/tasks';
 import type { ID, Priority } from '@/domain/types';
 import { cn } from '@/lib/cn';
 import { formatRelative, fromDateInput, toDateInput } from '@/lib/dates';
 import { useRoute } from '@/lib/router';
 import { useActions, useAppStore, useData } from '@/store/hooks';
 import { notify } from '@/store/toasts';
-import { useAppStoreApi } from '@/store/context';
 import { uiStore } from '@/store/ui';
 import { PRIORITY_STYLES, STATUS_STYLES } from '@/ui/tokens';
 import { Button, IconButton } from '../ui/Button';
@@ -41,24 +40,15 @@ export function TaskDrawer() {
   const taskId = route.taskId;
   const detail = useMemo(() => (taskId ? selectTaskDetail(data, userId, taskId) : null), [data, userId, taskId]);
 
-  const { deleteTask } = useActions();
-  const store = useAppStoreApi();
+  const { discardUntouchedDraft } = useActions();
 
   const close = () => {
-    discardUntouchedDraft();
-    navigate({ taskId: null });
-  };
-
-  /** A task made by "New task" and closed without any edit is thrown away, like a blank draft. */
-  const discardUntouchedDraft = () => {
     const { draftTaskId, setDraftTaskId } = uiStore.getState();
-    if (!draftTaskId) return;
-    setDraftTaskId(null);
-    // Read live state, not this render's `data`: the draft may have just been deleted from the drawer.
-    const current = store.getState().data;
-    const draft = current.tasks[draftTaskId];
-    const untouched = draft && draft.updatedAt === draft.createdAt && subtasksOf(current, draft.id).length === 0;
-    if (untouched) deleteTask(draft.id);
+    if (draftTaskId) {
+      setDraftTaskId(null);
+      discardUntouchedDraft(draftTaskId);
+    }
+    navigate({ taskId: null });
   };
 
   return (
@@ -110,7 +100,7 @@ function DrawerContent({
   onOpenTask: (id: ID) => void;
 }) {
   const { task, statuses, path, parent, assignableUsers, movableLists } = detail;
-  const { updateTask, moveTask, deleteTask } = useActions();
+  const { createTask, updateTask, moveTask, deleteTask } = useActions();
   const [, navigate] = useRoute();
   const users = useAppStore((s) => s.data.users);
   const [title, setTitle] = useState(task.title);
@@ -318,7 +308,14 @@ function DrawerContent({
         </section>
 
         {!task.parentTaskId && (
-          <SubtaskList parent={task} subtasks={detail.subtasks} statuses={statuses} onOpen={onOpenTask} />
+          <SubtaskList
+            subtasks={detail.subtasks}
+            statuses={statuses}
+            users={users}
+            onOpen={onOpenTask}
+            onAddSubtask={(title) => !createTask({ listId: task.primaryListId, title, parentTaskId: task.id }).error}
+            onToggleSubtask={(taskId, statusId) => updateTask(taskId, { statusId })}
+          />
         )}
 
         <p className="mt-8 border-t border-line pt-4 text-2xs text-ink-subtle">

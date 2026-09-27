@@ -1,26 +1,28 @@
 import { Check, ChevronRight, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { TITLE_MAX } from '@/domain/tasks';
-import type { ID, Status, Task } from '@/domain/types';
+import type { ID, Status, Task, User } from '@/domain/types';
 import { cn } from '@/lib/cn';
-import { useActions, useAppStore } from '@/store/hooks';
 import { FOCUS_RING } from '@/ui/tokens';
 import { AvatarStack } from '../ui/Avatar';
 
 /** One level of subtasks. Checking one moves it to the list's first "done" status. */
 export function SubtaskList({
-  parent,
   subtasks,
   statuses,
+  users,
   onOpen,
+  onAddSubtask,
+  onToggleSubtask,
 }: {
-  parent: Task;
   subtasks: Task[];
   statuses: Status[];
+  users: Record<ID, User>;
   onOpen: (id: ID) => void;
+  /** Returns whether the subtask was created. */
+  onAddSubtask: (title: string) => boolean;
+  onToggleSubtask: (taskId: ID, statusId: ID) => void;
 }) {
-  const { createTask, updateTask } = useActions();
-  const users = useAppStore((s) => s.data.users);
   const [title, setTitle] = useState('');
   const byId = Object.fromEntries(statuses.map((s) => [s.id, s]));
   const doneStatus = statuses.find((s) => s.category === 'done');
@@ -29,7 +31,7 @@ export function SubtaskList({
 
   const add = () => {
     if (!title.trim()) return;
-    if (!createTask({ listId: parent.primaryListId, title, parentTaskId: parent.id }).error) setTitle('');
+    if (onAddSubtask(title)) setTitle('');
   };
 
   return (
@@ -65,7 +67,7 @@ export function SubtaskList({
                 aria-label={`Mark "${sub.title}" ${done ? 'not done' : 'done'}`}
                 onClick={() => {
                   const target = done ? todoStatus : doneStatus;
-                  if (target) updateTask(sub.id, { statusId: target.id });
+                  if (target) onToggleSubtask(sub.id, target.id);
                 }}
                 className={cn(
                   'flex h-4 w-4 shrink-0 items-center justify-center rounded-full ring-1 ring-inset transition-colors',

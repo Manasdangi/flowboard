@@ -54,6 +54,8 @@ export interface AppActions {
   createTask(input: CreateTaskInput): Result<Task>;
   updateTask(taskId: ID, patch: Partial<TaskFields>): Result<Task>;
   deleteTask(taskId: ID): Result<Task[]>;
+  /** Deletes a "New task" draft if it was never edited; returns the removed tasks (none if kept). */
+  discardUntouchedDraft(taskId: ID): Result<Task[]>;
   /** Optimistic: applied immediately, rolled back if the save fails. */
   moveTask(input: MoveTaskInput): Promise<Result<Task>>;
 }
@@ -133,6 +135,7 @@ export function createAppStore(opts: AppStoreOptions = {}): AppStore {
       createTask: (input) => commit(tasks.createTask(get().data, actor(), input, now())),
       updateTask: (id, patch) => commit(tasks.updateTask(get().data, actor(), id, patch, now())),
       deleteTask: (id) => commit(tasks.deleteTask(get().data, actor(), id)),
+      discardUntouchedDraft: (id) => commit(tasks.discardUntouchedDraft(get().data, actor(), id)),
 
       async moveTask(input) {
         const before = get().data.tasks;

@@ -1,7 +1,7 @@
-import { Archive, ChevronRight, Eye, Pencil, Plus, RotateCcw, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Eye, Plus, Search } from 'lucide-react';
+import { useMemo } from 'react';
 import { selectArchived, selectSharedWithMe, selectVisibleTree } from '@/domain/tree';
-import type { Container, ID } from '@/domain/types';
+import type { ID } from '@/domain/types';
 import { cn } from '@/lib/cn';
 import { useRoute } from '@/lib/router';
 import { useActions, useAppStore, useCurrentUser, useData, useIsAdmin } from '@/store/hooks';
@@ -9,19 +9,27 @@ import { uiStore } from '@/store/ui';
 import { FOCUS_RING } from '@/ui/tokens';
 import { Kbd } from '../ui/Kbd';
 import { TreeSkeleton } from '../ui/Skeleton';
-import { RenameInput, SidebarTree } from './SidebarTree';
+import { ArchivedSection } from './ArchivedSection';
+import { ContainerMenu } from './ContainerMenu';
+import { SidebarTree, type TreeActions } from './SidebarTree';
+import { WorkspaceName } from './WorkspaceName';
 
+/**
+ * The connected part of the sidebar: it reads the store and passes data and
+ * callbacks down. Everything it renders (tree, rows, header, archive) is props-only.
+ */
 export function Sidebar() {
   const data = useData();
   const user = useCurrentUser();
   const isAdmin = useIsAdmin();
   const boot = useAppStore((s) => s.boot);
   const [route, navigate] = useRoute();
+  const { renameContainer, reorderContainer, restoreContainer } = useActions();
 
   // Permission filtering happens in the selector, not here.
   const tree = useMemo(() => selectVisibleTree(data, user.id), [data, user.id]);
   const shared = useMemo(() => selectSharedWithMe(data, user.id), [data, user.id]);
-  const onSelectList = (listId: ID) => navigate({ listId, taskId: null });
+  const archived = useMemo(() => selectArchived(data), [data]);
   const taskCounts = useMemo(() => {
     const counts: Record<ID, number> = {};
     for (const t of Object.values(data.tasks))
@@ -29,6 +37,18 @@ export function Sidebar() {
     return counts;
   }, [data.tasks]);
   const workspace = data.containers[data.workspaceId];
+
+  const openCreate = (parentId: ID) => uiStore.getState().openDialog({ kind: 'create', parentId });
+  const treeActions: TreeActions = {
+    canEdit: isAdmin,
+    onSelectList: (listId) => navigate({ listId, taskId: null }),
+    onRename: renameContainer,
+    onReorder: reorderContainer,
+    onAddChild: openCreate,
+    renderMenu: (container, startRename) => (
+      <ContainerMenu container={container} isAdmin={isAdmin} onRename={startRename} />
+    ),
+  };
 
   return (
     <aside aria-label="Sidebar" className="flex w-64 shrink-0 flex-col border-r border-line bg-surface-muted">
@@ -41,7 +61,13 @@ export function Sidebar() {
           </svg>
         </span>
         <div className="min-w-0 flex-1">
-          {workspace && <WorkspaceName workspace={workspace} isAdmin={isAdmin} />}
+          {workspace && (
+            <WorkspaceName
+              workspace={workspace}
+              canEdit={isAdmin}
+              onRename={(name) => renameContainer(workspace.id, name)}
+            />
+          )}
           <p className="text-2xs leading-tight text-ink-subtle">Flowboard workspace</p>
         </div>
       </div>
@@ -79,7 +105,7 @@ export function Sidebar() {
               type="button"
               aria-label="New space"
               title="New space"
-              onClick={() => uiStore.getState().openDialog({ kind: 'create', parentId: data.workspaceId })}
+              onClick={() => openCreate(data.workspaceId)}
               className={cn(
                 'flex h-5 w-5 items-center justify-center rounded text-ink-subtle hover:bg-line hover:text-ink',
                 FOCUS_RING,
@@ -100,7 +126,7 @@ export function Sidebar() {
               label="Workspace"
               selectedListId={route.listId}
               taskCounts={taskCounts}
-              onSelectList={onSelectList}
+              actions={treeActions}
             />
             {/* Items shared with the user inside containers they can't see; the parents stay hidden. */}
             {shared.length > 0 && (
@@ -113,7 +139,7 @@ export function Sidebar() {
                   label="Shared with me"
                   selectedListId={route.listId}
                   taskCounts={taskCounts}
-                  onSelectList={onSelectList}
+                  actions={treeActions}
                 />
               </div>
             )}
@@ -121,95 +147,7 @@ export function Sidebar() {
         )}
       </nav>
 
-      {isAdmin && boot === 'ready' && <ArchivedSection />}
+      {isAdmin && boot === 'ready' && <ArchivedSection archived={archived} onRestore={restoreContainer} />}
     </aside>
-  );
-}
-
-/** The workspace name in the header. Admins can rename it in place (the "U" of workspace CRUD). */
-function WorkspaceName({ workspace, isAdmin }: { workspace: Container; isAdmin: boolean }) {
-  const { renameContainer } = useActions();
-  const [editing, setEditing] = useState(false);
-
-  if (editing) {
-    return (
-      <RenameInput
-        initial={workspace.name}
-        onDone={(name) => {
-          setEditing(false);
-          if (name !== null && name !== workspace.name) renameContainer(workspace.id, name);
-        }}
-      />
-    );
-  }
-
-  return (
-    <div className="group flex min-w-0 items-center gap-1">
-      <p className="truncate text-sm font-semibold leading-tight text-ink">{workspace.name}</p>
-      {isAdmin && (
-        <button
-          type="button"
-          aria-label="Rename workspace"
-          title="Rename workspace"
-          onClick={() => setEditing(true)}
-          className={cn(
-            'flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint opacity-0 transition-opacity hover:bg-line hover:text-ink focus-visible:opacity-100 group-hover:opacity-100',
-            FOCUS_RING,
-          )}
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
-      )}
-    </div>
-  );
-}
-
-function ArchivedSection() {
-  const data = useData();
-  const { restoreContainer } = useActions();
-  const [open, setOpen] = useState(false);
-  const archived = useMemo(() => selectArchived(data), [data]);
-  if (archived.length === 0) return null;
-
-  return (
-    <div className="shrink-0 border-t border-line px-2 py-2">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className={cn(
-          'flex h-7 w-full items-center gap-1.5 rounded-control px-2 text-xs font-medium text-ink-muted hover:bg-surface-sunken hover:text-ink',
-          FOCUS_RING,
-        )}
-      >
-        <ChevronRight className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-90')} />
-        <Archive className="h-3.5 w-3.5" />
-        <span className="flex-1 text-left">Archived</span>
-        <span className="tabular-nums text-ink-faint">{archived.length}</span>
-      </button>
-      {open && (
-        <ul className="mt-1 animate-fade-in space-y-px">
-          {archived.map((c) => (
-            <li
-              key={c.id}
-              className="group flex h-7 items-center gap-2 rounded-control pl-8 pr-1 text-xs text-ink-subtle hover:bg-surface-sunken"
-            >
-              <span className="min-w-0 flex-1 truncate line-through decoration-ink-faint">{c.name}</span>
-              <span className="text-2xs capitalize text-ink-faint group-hover:hidden">{c.type}</span>
-              <button
-                type="button"
-                onClick={() => restoreContainer(c.id)}
-                className={cn(
-                  'hidden h-6 items-center gap-1 rounded px-1.5 font-medium text-brand-700 hover:bg-brand-50 focus-visible:flex group-hover:flex',
-                  FOCUS_RING,
-                )}
-              >
-                <RotateCcw className="h-3 w-3" /> Restore
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }

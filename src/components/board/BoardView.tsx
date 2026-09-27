@@ -52,7 +52,7 @@ function insertionIndex(column: ID[], over: Over, active: Active): number {
  * ONE store call — moveTask — which applies optimistically and persists.
  */
 export function BoardView({ board, onOpenTask }: { board: BoardModel; onOpenTask: (id: ID) => void }) {
-  const { moveTask } = useActions();
+  const { moveTask, createTask } = useActions();
   const users = useAppStore((s) => s.data.users);
   const tasks = useAppStore((s) => s.data.tasks);
   const pending = useAppStore((s) => s.pendingTaskIds);
@@ -157,10 +157,10 @@ export function BoardView({ board, onOpenTask }: { board: BoardModel; onOpenTask
           <Column
             key={status.id}
             status={status}
-            listId={board.list.id}
             taskIds={columns[status.id] ?? []}
             highlighted={!!activeId && overColumn === status.id}
             dragging={!!activeId}
+            onAddTask={(title) => !createTask({ listId: board.list.id, statusId: status.id, title }).error}
             render={(id) => {
               const task = tasks[id];
               return task ? <SortableTaskCard key={id} {...cardProps(task)} onOpen={() => onOpenTask(id)} /> : null;
@@ -177,17 +177,17 @@ export function BoardView({ board, onOpenTask }: { board: BoardModel; onOpenTask
 
 function Column({
   status,
-  listId,
   taskIds,
   highlighted,
   dragging,
+  onAddTask,
   render,
 }: {
   status: Status;
-  listId: ID;
   taskIds: ID[];
   highlighted: boolean;
   dragging: boolean;
+  onAddTask: (title: string) => boolean;
   render: (id: ID) => ReactNode;
 }) {
   const { setNodeRef } = useDroppable({ id: status.id, data: { type: 'column' } });
@@ -242,7 +242,7 @@ function Column({
         )}
       </div>
       <div className="px-2 pb-2">
-        <QuickAdd key={adding} listId={listId} statusId={status.id} compact autoOpen={adding > 0} />
+        <QuickAdd key={adding} onAdd={onAddTask} compact autoOpen={adding > 0} />
       </div>
     </section>
   );

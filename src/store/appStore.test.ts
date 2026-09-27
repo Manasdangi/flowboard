@@ -175,6 +175,33 @@ describe('tasks', () => {
     expect(store.getState().data.tasks.t_bl_6b).toBeUndefined();
   });
 
+  it('discards a draft only while it is untouched', () => {
+    // A ticking clock, so an edit always moves `updatedAt` past `createdAt`.
+    let tick = 0;
+    const store = createAppStore({
+      initialData: createSeed(new Date('2026-06-01T12:00:00Z')),
+      now: () => new Date(Date.UTC(2026, 5, 1, 12, 0, tick++)).toISOString(),
+      ready: true,
+    });
+    const actions = store.getState().actions;
+
+    const blank = actions.createTask({ listId: L.backlog, title: 'Untitled task' }).data!;
+    expect(actions.discardUntouchedDraft(blank.id).data).toHaveLength(1);
+    expect(store.getState().data.tasks[blank.id]).toBeUndefined();
+    // Already gone (deleted from the drawer): a no-op, not a NOT_FOUND error.
+    expect(actions.discardUntouchedDraft(blank.id)).toEqual({ data: [] });
+
+    const edited = actions.createTask({ listId: L.backlog, title: 'Untitled task' }).data!;
+    actions.updateTask(edited.id, { priority: 'high' });
+    expect(actions.discardUntouchedDraft(edited.id)).toEqual({ data: [] });
+
+    const withSubtask = actions.createTask({ listId: L.backlog, title: 'Untitled task' }).data!;
+    actions.createTask({ listId: L.backlog, title: 'child', parentTaskId: withSubtask.id });
+    expect(actions.discardUntouchedDraft(withSubtask.id)).toEqual({ data: [] });
+    expect(store.getState().data.tasks[edited.id]).toBeDefined();
+    expect(store.getState().data.tasks[withSubtask.id]).toBeDefined();
+  });
+
   it('limits subtasks to one level', () => {
     const { actions } = setup();
     expect(actions.createTask({ listId: L.backlog, title: 'deep', parentTaskId: 't_bl_6a' }).error?.message).toMatch(

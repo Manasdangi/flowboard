@@ -17,17 +17,28 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronRight, Folder, FolderOpen, GripVertical, ListTodo, Lock, Plus } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { CHILD_TYPE, type TreeNode } from '@/domain/tree';
+import { GripVertical } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import type { TreeNode } from '@/domain/tree';
 import type { Container, ID } from '@/domain/types';
 import { cn } from '@/lib/cn';
-import { useActions, useIsAdmin } from '@/store/hooks';
-import { uiStore } from '@/store/ui';
 import { FOCUS_RING } from '@/ui/tokens';
-import { ContainerMenu } from './ContainerMenu';
+import { INDENT, TreeRow, TypeIcon } from './TreeRow';
 
-const INDENT = ['pl-1.5', 'pl-5', 'pl-9', 'pl-[3.25rem]'];
+/**
+ * What the tree can do, supplied by the connected `Sidebar`. The tree itself
+ * never reads the store, so it renders from props alone.
+ */
+export interface TreeActions {
+  /** Drag to reorder, F2 / double-click to rename, and the "+" button. */
+  canEdit: boolean;
+  onSelectList: (listId: ID) => void;
+  onRename: (id: ID, name: string) => void;
+  onReorder: (id: ID, toIndex: number) => void;
+  onAddChild: (parentId: ID) => void;
+  /** The row's "…" menu; `startRename` opens the inline rename field. */
+  renderMenu: (container: Container, startRename: () => void) => ReactNode;
+}
 
 interface TreeProps {
   nodes: TreeNode[];
@@ -35,7 +46,7 @@ interface TreeProps {
   label: string;
   selectedListId: ID | null;
   taskCounts: Record<ID, number>;
-  onSelectList: (listId: ID) => void;
+  actions: TreeActions;
 }
 
 function findNode(nodes: TreeNode[], id: ID): TreeNode | undefined {
@@ -47,9 +58,8 @@ function findNode(nodes: TreeNode[], id: ID): TreeNode | undefined {
   return undefined;
 }
 
-export function SidebarTree({ nodes, label, selectedListId, taskCounts, onSelectList }: TreeProps) {
-  const isAdmin = useIsAdmin();
-  const { reorderContainer } = useActions();
+export function SidebarTree(props: TreeProps) {
+  const { nodes, actions } = props;
   const [collapsed, setCollapsed] = useState<Set<ID>>(() => new Set());
   const [activeId, setActiveId] = useState<ID | null>(null);
 
@@ -74,7 +84,7 @@ export function SidebarTree({ nodes, label, selectedListId, taskCounts, onSelect
     // Only siblings can be reordered — dropping onto another group is ignored.
     if (active.data.current?.parentId !== over.data.current?.parentId) return;
     const siblings: ID[] = over.data.current?.siblings ?? [];
-    reorderContainer(String(active.id), siblings.indexOf(String(over.id)));
+    actions.onReorder(String(active.id), siblings.indexOf(String(over.id)));
   };
 
   const active = activeId ? findNode(nodes, activeId) : undefined;
@@ -88,18 +98,7 @@ export function SidebarTree({ nodes, label, selectedListId, taskCounts, onSelect
       onDragEnd={onDragEnd}
       onDragCancel={() => setActiveId(null)}
     >
-      <Branch
-        nodes={nodes}
-        label={label}
-        depth={0}
-        parentId="root"
-        isAdmin={isAdmin}
-        collapsed={collapsed}
-        onToggle={toggle}
-        selectedListId={selectedListId}
-        taskCounts={taskCounts}
-        onSelectList={onSelectList}
-      />
+      <Branch {...props} depth={0} parentId="root" collapsed={collapsed} onToggle={toggle} />
       <DragOverlay dropAnimation={null}>
         {active && (
           <div className="flex h-8 items-center gap-2 rounded-control bg-surface px-2 text-sm font-medium text-ink shadow-drag">
@@ -112,11 +111,9 @@ export function SidebarTree({ nodes, label, selectedListId, taskCounts, onSelect
   );
 }
 
-interface BranchProps extends Omit<TreeProps, 'nodes'> {
-  nodes: TreeNode[];
+interface BranchProps extends TreeProps {
   depth: number;
   parentId: ID;
-  isAdmin: boolean;
   collapsed: Set<ID>;
   onToggle: (id: ID) => void;
 }
@@ -140,10 +137,11 @@ function Branch(props: BranchProps) {
 
 function SortableItem({ node, siblings, ...props }: BranchProps & { node: TreeNode; siblings: ID[] }) {
   const { container, children } = node;
+  const { actions } = props;
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: container.id,
     data: { parentId: props.parentId, siblings },
-    disabled: !props.isAdmin,
+    disabled: !actions.canEdit,
   });
   const isList = container.type === 'list';
   const open = !props.collapsed.has(container.id);
@@ -159,17 +157,20 @@ function SortableItem({ node, siblings, ...props }: BranchProps & { node: TreeNo
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(isDragging && 'relative z-10 opacity-40')}
     >
-      <Row
+      <TreeRow
         node={node}
         depth={props.depth}
         open={open}
         selected={selected}
-        isAdmin={props.isAdmin}
+        canEdit={actions.canEdit}
         count={props.taskCounts[container.id]}
         onToggle={() => props.onToggle(container.id)}
-        onSelect={() => (isList ? props.onSelectList(container.id) : props.onToggle(container.id))}
+        onSelect={() => (isList ? actions.onSelectList(container.id) : props.onToggle(container.id))}
+        onRename={(name) => actions.onRename(container.id, name)}
+        onAddChild={() => actions.onAddChild(container.id)}
+        renderMenu={actions.renderMenu}
         dragHandle={
-          props.isAdmin ? (
+          actions.canEdit ? (
             <button
               ref={setActivatorNodeRef}
               type="button"
@@ -195,175 +196,5 @@ function SortableItem({ node, siblings, ...props }: BranchProps & { node: TreeNo
         </p>
       )}
     </li>
-  );
-}
-
-function TypeIcon({ container, open }: { container: Container; open: boolean }) {
-  if (container.type === 'space') {
-    return (
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-brand-600 text-[9px] font-bold uppercase text-white">
-        {container.name[0]}
-      </span>
-    );
-  }
-  if (container.type === 'folder') {
-    const Icon = open ? FolderOpen : Folder;
-    return <Icon className="h-4 w-4 shrink-0 text-ink-subtle" aria-hidden />;
-  }
-  return <ListTodo className="h-4 w-4 shrink-0 text-ink-subtle" aria-hidden />;
-}
-
-function Row({
-  node,
-  depth,
-  open,
-  selected,
-  isAdmin,
-  count,
-  onToggle,
-  onSelect,
-  dragHandle,
-}: {
-  node: TreeNode;
-  depth: number;
-  open: boolean;
-  selected: boolean;
-  isAdmin: boolean;
-  count?: number;
-  onToggle: () => void;
-  onSelect: () => void;
-  dragHandle: ReactNode;
-}) {
-  const { container } = node;
-  const { renameContainer } = useActions();
-  const [editing, setEditing] = useState(false);
-  const isList = container.type === 'list';
-  const canAddChild = CHILD_TYPE[container.type] !== null;
-
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'ArrowRight' && !isList && !open) onToggle();
-    if (e.key === 'ArrowLeft' && !isList && open) onToggle();
-    if (e.key === 'F2' && isAdmin) setEditing(true);
-  };
-
-  return (
-    <div
-      className={cn(
-        'group relative flex h-8 items-center gap-1.5 rounded-control pr-1 text-sm transition-colors',
-        INDENT[depth],
-        selected ? 'bg-brand-50 text-brand-800' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
-      )}
-    >
-      {dragHandle}
-      {!isList ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label={open ? `Collapse ${container.name}` : `Expand ${container.name}`}
-          className={cn(
-            'flex h-5 w-5 shrink-0 items-center justify-center rounded text-ink-faint hover:bg-line hover:text-ink-muted',
-            FOCUS_RING,
-          )}
-        >
-          <ChevronRight className={cn('h-3.5 w-3.5 transition-transform duration-150', open && 'rotate-90')} />
-        </button>
-      ) : (
-        <span className="w-5 shrink-0" />
-      )}
-
-      {editing ? (
-        <RenameInput
-          initial={container.name}
-          onDone={(name) => {
-            setEditing(false);
-            if (name !== null && name !== container.name) renameContainer(container.id, name);
-          }}
-        />
-      ) : (
-        <button
-          type="button"
-          onClick={onSelect}
-          onKeyDown={onKeyDown}
-          onDoubleClick={() => isAdmin && setEditing(true)}
-          aria-current={selected ? 'page' : undefined}
-          title={container.name}
-          className={cn(
-            'flex min-w-0 flex-1 items-center gap-2 rounded py-1 text-left',
-            FOCUS_RING,
-            (container.type === 'space' || selected) && 'font-medium',
-            container.type === 'space' && !selected && 'text-ink',
-          )}
-        >
-          <TypeIcon container={container} open={open} />
-          <span className="truncate">{container.name}</span>
-          {container.visibility === 'private' && (
-            <Lock className="h-3 w-3 shrink-0 text-ink-faint" aria-label="Private" />
-          )}
-        </button>
-      )}
-
-      {!editing && (
-        <div className="flex shrink-0 items-center">
-          {isList && count !== undefined && (
-            <span
-              className={cn(
-                'px-1 text-2xs tabular-nums text-ink-faint group-focus-within:hidden group-hover:hidden',
-                selected && 'text-brand-500',
-              )}
-            >
-              {count}
-            </span>
-          )}
-          <div className="hidden items-center group-focus-within:flex group-hover:flex has-[[data-open]]:flex">
-            <ContainerMenu container={container} isAdmin={isAdmin} onRename={() => setEditing(true)} />
-            {canAddChild && isAdmin && (
-              <button
-                type="button"
-                aria-label={`Add ${CHILD_TYPE[container.type]} to ${container.name}`}
-                title={`New ${CHILD_TYPE[container.type]}`}
-                onClick={() => uiStore.getState().openDialog({ kind: 'create', parentId: container.id })}
-                className={cn(
-                  'flex h-6 w-6 items-center justify-center rounded text-ink-subtle hover:bg-line hover:text-ink',
-                  FOCUS_RING,
-                )}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Inline rename field: Enter or blur saves, Escape cancels (`onDone(null)`). */
-export function RenameInput({ initial, onDone }: { initial: string; onDone: (name: string | null) => void }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState(initial);
-  const done = useRef(false);
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
-  }, []);
-  const finish = (name: string | null) => {
-    if (done.current) return;
-    done.current = true;
-    onDone(name);
-  };
-  return (
-    <input
-      ref={ref}
-      value={value}
-      aria-label="Rename"
-      maxLength={80}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={() => finish(value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') finish(value);
-        if (e.key === 'Escape') finish(null);
-      }}
-      className="h-6 min-w-0 flex-1 rounded bg-surface px-1.5 text-sm text-ink ring-2 ring-brand-500 focus:outline-none"
-    />
   );
 }

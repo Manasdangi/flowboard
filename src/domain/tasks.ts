@@ -210,3 +210,13 @@ export function deleteTask(data: DataState, actorId: ID, taskId: ID): Result<Cha
   for (const t of removed) delete tasks[t.id];
   return ok({ state: { ...data, tasks }, value: removed });
 }
+
+/**
+ * A task made by "New task" and closed without any edit is thrown away, like a
+ * blank draft. Edited drafts, drafts with subtasks and already-deleted ones are left alone.
+ */
+export function discardUntouchedDraft(data: DataState, actorId: ID, taskId: ID): Result<Change<Task[]>> {
+  const draft = data.tasks[taskId];
+  const untouched = draft && draft.updatedAt === draft.createdAt && subtasksOf(data, taskId).length === 0;
+  return untouched ? deleteTask(data, actorId, taskId) : ok({ state: data, value: [] });
+}

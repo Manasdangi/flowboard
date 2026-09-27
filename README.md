@@ -81,7 +81,7 @@ flowchart TD
 
 - **Domain (`src/domain/`)** holds the rules. Every change is a **pure function** that takes the current data and returns new data or an error. Every read is a **selector** that takes the current user and returns only what that user may see. No React and no store library, so it's easy to test.
 - **Store (`src/store/`)** is a thin Zustand wrapper. Each action calls a domain function; on success it saves the new state, on error it shows a toast automatically, so components never need their own error handling.
-- **Components (`src/components/`)** read through selectors and write through `useActions()`.
+- **Components (`src/components/`)** read through selectors and write through `useActions()`. Screen-level components (`Sidebar`, `ListScreen`, `TaskDrawer`) connect to the store and pass data and callbacks down. The shared `ui/` components and the sidebar's tree, rows, header and archive list take props only; an ESLint rule stops them importing the store.
 
 **What happens when you drag a card:**
 

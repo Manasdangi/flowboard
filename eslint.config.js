@@ -15,4 +15,22 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // Presentational components take props only; their connected parent reads the store.
+    files: [
+      'src/components/ui/**/*.tsx',
+      'src/components/sidebar/{SidebarTree,TreeRow,WorkspaceName,ArchivedSection}.tsx',
+      'src/components/board/QuickAdd.tsx',
+      'src/components/task/SubtaskList.tsx',
+    ],
+    ignores: ['src/components/ui/Toaster.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [{ group: ['@/store/*'], message: 'Presentational component: take data and callbacks as props.' }],
+        },
+      ],
+    },
+  },
 );

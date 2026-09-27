@@ -1,32 +1,27 @@
 import { Plus } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { TITLE_MAX } from '@/domain/tasks';
-import type { ID } from '@/domain/types';
 import { cn } from '@/lib/cn';
-import { useActions } from '@/store/hooks';
 import { FOCUS_RING } from '@/ui/tokens';
 
 /** Inline "add task" for a column. Enter adds and stays open for the next one; Escape closes. */
 export function QuickAdd({
-  listId,
-  statusId,
+  onAdd,
   compact,
   autoOpen = false,
 }: {
-  listId: ID;
-  statusId: ID;
+  /** Returns whether the task was created; the caller owns listId/statusId and the store call. */
+  onAdd: (title: string) => boolean;
   compact?: boolean;
   autoOpen?: boolean;
 }) {
-  const { createTask } = useActions();
   const [open, setOpen] = useState(autoOpen);
   const [title, setTitle] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
 
   const submit = () => {
     if (!title.trim()) return setOpen(false);
-    const result = createTask({ listId, statusId, title });
-    if (!result.error) {
+    if (onAdd(title)) {
       setTitle('');
       ref.current?.focus();
     }
