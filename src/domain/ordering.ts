@@ -2,8 +2,10 @@ import type { ID } from './types';
 
 const POSITION_STEP = 1000;
 
+/** Sort comparator: ascending by `position`. Use with `.sort(byPosition)`. */
 export const byPosition = <T extends { position: number }>(a: T, b: T) => a.position - b.position;
 
+/** Position for a new item placed after all existing ones (one step past the current max). */
 export const nextPosition = (items: { position: number }[]) =>
   items.length === 0 ? POSITION_STEP : Math.max(...items.map((i) => i.position)) + POSITION_STEP;
 

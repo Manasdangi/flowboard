@@ -17,6 +17,7 @@ export interface Change<T = void> {
 
 const NAME_MAX = 80;
 
+/** Trim a container name and check it's non-empty and within NAME_MAX; returns the cleaned name. */
 function validateName(name: string): Result<string> {
   const trimmed = name.trim();
   if (!trimmed) return fail('VALIDATION', 'Name is required.');
@@ -24,6 +25,7 @@ function validateName(name: string): Result<string> {
   return ok(trimmed);
 }
 
+/** Look up a container by id, or return NOT_FOUND. */
 function getContainer(data: DataState, id: ID): Result<Container> {
   const c = data.containers[id];
   return c ? ok(c) : notFound('Container');
@@ -35,6 +37,10 @@ export interface CreateContainerInput {
   visibility?: Visibility;
 }
 
+/**
+ * Create a space, folder or list under `parentId` (admin only). The child type
+ * follows from the parent's type; a new list gets the default status set.
+ */
 export function createContainer(
   data: DataState,
   actorId: ID,
@@ -78,6 +84,7 @@ export function createContainer(
   });
 }
 
+/** Shared update path: admin check, find the container, apply `patch`, bump updatedAt. */
 function patchContainer(
   data: DataState,
   actorId: ID,
@@ -96,6 +103,7 @@ function patchContainer(
   return ok({ state: { ...data, containers: { ...data.containers, [id]: next } }, value: next });
 }
 
+/** Rename any container, including the workspace (admin only). */
 export function renameContainer(data: DataState, actorId: ID, id: ID, name: string, now: ISODate) {
   return patchContainer(
     data,
@@ -110,6 +118,7 @@ export function renameContainer(data: DataState, actorId: ID, id: ID, name: stri
   );
 }
 
+/** Make a container public or private (admin only; the workspace is always visible). */
 export function setVisibility(data: DataState, actorId: ID, id: ID, visibility: Visibility, now: ISODate) {
   return patchContainer(
     data,
@@ -138,6 +147,7 @@ export function archiveContainer(data: DataState, actorId: ID, id: ID, now: ISOD
   );
 }
 
+/** Undo an archive (admin only). Refused while the parent is still archived. */
 export function restoreContainer(data: DataState, actorId: ID, id: ID, now: ISODate) {
   return patchContainer(
     data,

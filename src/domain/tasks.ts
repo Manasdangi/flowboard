@@ -21,6 +21,7 @@ export function columnTasks(data: DataState, listId: ID, statusId: ID): Task[] {
     .sort(byPosition);
 }
 
+/** A task's subtasks, ordered. */
 export function subtasksOf(data: DataState, parentId: ID): Task[] {
   return Object.values(data.tasks)
     .filter((t) => t.parentTaskId === parentId)
@@ -40,6 +41,10 @@ export interface TaskFields {
   dueDate: ISODate | null;
 }
 
+/**
+ * Validate and normalise whichever task fields are present: trimmed title, a status
+ * from this list, a known priority, real and de-duplicated assignees, a parseable due date.
+ */
 function validateFields(data: DataState, listId: ID, fields: Partial<TaskFields>): Result<Partial<TaskFields>> {
   const out: Partial<TaskFields> = { ...fields };
   if (fields.title !== undefined) {
@@ -79,6 +84,10 @@ export interface CreateTaskInput extends Partial<TaskFields> {
   parentTaskId?: ID | null;
 }
 
+/**
+ * Create a task, or a subtask when `parentTaskId` is set (one level deep, same list).
+ * Defaults to the list's first status and goes to the end of its column.
+ */
 export function createTask(data: DataState, actorId: ID, input: CreateTaskInput, now: ISODate): Result<Change<Task>> {
   const denied = guardViewList(data, actorId, input.listId);
   if (denied) return { error: denied };
@@ -121,6 +130,7 @@ export function createTask(data: DataState, actorId: ID, input: CreateTaskInput,
   return ok({ state: { ...data, tasks: { ...data.tasks, [task.id]: task } }, value: task });
 }
 
+/** Edit a task's fields. A status change also moves a top-level task to the end of its new column. */
 export function updateTask(
   data: DataState,
   actorId: ID,
@@ -202,6 +212,7 @@ export function moveTask(data: DataState, actorId: ID, input: MoveTaskInput, now
   return ok({ state: { ...data, tasks }, value: tasks[task.id] });
 }
 
+/** Delete a task and its subtasks; returns everything removed (for the "along with N subtasks" toast). */
 export function deleteTask(data: DataState, actorId: ID, taskId: ID): Result<Change<Task[]>> {
   const found = guardTask(data, actorId, taskId);
   if (found.error) return found;

@@ -23,6 +23,7 @@ export interface BoardModel {
   taskCount: number;
 }
 
+/** Subtask done/total counts for each task that has subtasks (the "2/3" badge on cards and rows). */
 function progressFor(data: DataState, parents: Task[]) {
   const progress: BoardModel['subtaskProgress'] = {};
   for (const p of parents) {
@@ -37,12 +38,14 @@ function progressFor(data: DataState, parents: Task[]) {
   return progress;
 }
 
+/** Case-insensitive match on title or description. An empty query matches everything. */
 function matchesQuery(task: Task, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   return task.title.toLowerCase().includes(q) || task.description.toLowerCase().includes(q);
 }
 
+/** Kanban model for one list: its statuses as columns, each with its ordered top-level tasks (403 if hidden). */
 export function selectBoard(data: DataState, userId: ID, listId: ID): Result<BoardModel> {
   const denied = guardViewList(data, userId, listId);
   if (denied) return { error: denied };
@@ -71,6 +74,7 @@ export interface SortSpec {
 
 const PRIORITY_RANK: Record<Priority, number> = { urgent: 0, high: 1, normal: 2, low: 3, none: 4 };
 
+/** Sort for the list view. Ties fall back to board order; no due date / no priority always sink to the bottom. */
 function sortTasks(tasks: Task[], sort: SortSpec, statuses: Record<ID, Status>): Task[] {
   const dir = sort.dir === 'asc' ? 1 : -1;
   const statusPos = (t: Task) => statuses[t.statusId]?.position ?? 0;
@@ -114,6 +118,7 @@ function matchesAssignees(task: Task, filter: string[]): boolean {
   return task.assigneeIds.some((id) => filter.includes(id));
 }
 
+/** One page of the list view: filter → sort → slice, plus total and next offset (403 if hidden). */
 export function selectListPage(
   data: DataState,
   userId: ID,
@@ -158,6 +163,10 @@ export interface TaskDetail {
   movableLists: Container[];
 }
 
+/**
+ * Everything the task drawer needs, in one permission-checked call. Breadcrumbs,
+ * assignee suggestions and move targets are all filtered to what the user can see.
+ */
 export function selectTaskDetail(data: DataState, userId: ID, taskId: ID): Result<TaskDetail> {
   const found = guardTask(data, userId, taskId);
   if (found.error) return found;
@@ -184,6 +193,7 @@ export interface SearchHit {
   status: Status | undefined;
 }
 
+/** ⌘K search over lists the user can see; title matches rank first, then most recently updated. */
 export function searchTasks(data: DataState, userId: ID, query: string, limit = 20): SearchHit[] {
   if (!query.trim()) return [];
   const visible = new Map(selectVisibleLists(data, userId).map((l) => [l.id, l]));

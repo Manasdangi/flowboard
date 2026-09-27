@@ -24,8 +24,10 @@ export type AccessDecision = {
   decidedBy: ID;
 };
 
+/** True for workspace admins, who bypass every visibility rule. */
 const isAdmin = (user: User | undefined): boolean => user?.role === 'admin';
 
+/** The explicit allow/deny grant a user has on one container, if any. */
 export function findGrant(data: DataState, userId: ID, resourceId: ID): Grant | undefined {
   for (const grant of Object.values(data.grants)) {
     if (grant.userId === userId && grant.resourceId === resourceId) return grant;
@@ -52,6 +54,7 @@ export function resolveAccess(data: DataState, userId: ID, containerId: ID): Acc
   return resolveMember(data, userId, node);
 }
 
+/** Member rules: grant → private → inherit from parent, walking up until a rule applies. */
 function resolveMember(data: DataState, userId: ID, node: Container): AccessDecision {
   if (node.type === 'workspace') return { visible: true, reason: 'workspace', decidedBy: node.id };
 
@@ -91,6 +94,7 @@ export function usersWithAccess(data: DataState, listId: ID): User[] {
 // Guards: return a StoreError (403 / 404) or null. Used by selectors & mutations.
 // ---------------------------------------------------------------------------
 
+/** 404 if the list is missing or archived, 403 if the user can't see it, otherwise null. */
 export function guardViewList(data: DataState, userId: ID, listId: ID): StoreError | null {
   const list = data.containers[listId];
   if (!list || list.type !== 'list') return notFound('List').error!;
@@ -101,6 +105,7 @@ export function guardViewList(data: DataState, userId: ID, listId: ID): StoreErr
   return null;
 }
 
+/** Find a task and check the user can see its list; returns the task or a 403/404. */
 export function guardTask(data: DataState, userId: ID, taskId: ID): Result<Task> {
   const task = data.tasks[taskId];
   if (!task) return notFound('Task');
@@ -111,6 +116,7 @@ export function guardTask(data: DataState, userId: ID, taskId: ID): Result<Task>
   return ok(task);
 }
 
+/** 403 unless the user is an admin. `action` fills the message ("Only workspace admins can …"). */
 export function guardManage(data: DataState, userId: ID, action: string): StoreError | null {
   return canManageContainers(data, userId) ? null : forbidden(`Only workspace admins can ${action}.`).error!;
 }

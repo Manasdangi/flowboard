@@ -11,6 +11,7 @@ export const CATEGORY_LABEL: Record<StatusCategory, string> = {
   done: 'Completed',
 };
 
+/** The To do → In progress → Done set every new list starts with. */
 export function defaultStatuses(listId: ID): Status[] {
   return [
     { id: newId('st'), listId, name: 'To do', category: 'todo', color: 'slate', position: 1000 },
@@ -19,6 +20,7 @@ export function defaultStatuses(listId: ID): Status[] {
   ];
 }
 
+/** A list's own statuses in column order. */
 export function statusesForList(data: DataState, listId: ID): Status[] {
   return Object.values(data.statuses)
     .filter((s) => s.listId === listId)
@@ -46,6 +48,7 @@ export interface StatusInput {
   color: StatusColor;
 }
 
+/** Trim the name and check length and uniqueness within the list (`ignoreId` skips the status being edited). */
 function validateStatus(data: DataState, listId: ID, input: StatusInput, ignoreId?: ID): Result<string> {
   const name = input.name.trim();
   if (!name) return fail('VALIDATION', 'Status name is required.');
@@ -57,6 +60,7 @@ function validateStatus(data: DataState, listId: ID, input: StatusInput, ignoreI
   return ok(name);
 }
 
+/** Add a status to the end of a list's set (admin only). */
 export function addStatus(data: DataState, actorId: ID, listId: ID, input: StatusInput): Result<Change<Status>> {
   const denied = guardManage(data, actorId, 'configure statuses');
   if (denied) return { error: denied };
@@ -74,6 +78,7 @@ export function addStatus(data: DataState, actorId: ID, listId: ID, input: Statu
   return ok({ state: { ...data, statuses: { ...data.statuses, [status.id]: status } }, value: status });
 }
 
+/** Rename, recolour or recategorise a status (admin only). Can't move a category's last status away. */
 export function updateStatus(data: DataState, actorId: ID, statusId: ID, input: StatusInput): Result<Change<Status>> {
   const denied = guardManage(data, actorId, 'configure statuses');
   if (denied) return { error: denied };

@@ -15,6 +15,7 @@ export const CHILD_TYPE: Record<ContainerType, ContainerType | null> = {
   list: null,
 };
 
+/** Direct children of a container, in sibling order. Archived ones are skipped unless asked for. */
 export function childrenOf(data: DataState, parentId: ID, opts: { includeArchived?: boolean } = {}): Container[] {
   return Object.values(data.containers)
     .filter((c) => c.parentId === parentId && (opts.includeArchived || !c.archivedAt))
@@ -85,6 +86,7 @@ export function visibleAncestorsOf(data: DataState, userId: ID, id: ID): Contain
   return ancestorsOf(data, id).filter((c) => canViewContainer(data, userId, c.id));
 }
 
+/** Ids of every container below `id`, at any depth (archived ones included). */
 export function descendantIds(data: DataState, id: ID): ID[] {
   const out: ID[] = [];
   const walk = (parentId: ID) => {
