@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { CATEGORY_LABEL, statusesForList } from '@/domain/statuses';
 import type { ID, Status, StatusCategory, StatusColor } from '@/domain/types';
 import { cn } from '@/lib/cn';
-import { useActions, useData } from '@/store/hooks';
+import { useActions, useDataWith } from '@/store/hooks';
 import { STATUS_COLORS, STATUS_STYLES } from '@/ui/tokens';
 import { Button, IconButton } from '../ui/Button';
 import { Select, TextInput } from '../ui/Field';
@@ -13,7 +13,7 @@ import { StatusIcon } from '../ui/Badges';
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as StatusCategory[];
 
 export function StatusDialog({ listId, onClose }: { listId: ID; onClose: () => void }) {
-  const data = useData();
+  const data = useDataWith('statuses', 'tasks');
   const { addStatus } = useActions();
   const list = data.containers[listId];
   const statuses = statusesForList(data, listId);

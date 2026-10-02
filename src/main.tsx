@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './index.css';
 import { createAppStore } from './store/appStore';
+import { createIndexedDbBlobStore, pruneBlobs } from './store/blobs';
 import { StoreProvider } from './store/context';
 import { loadPersisted, persistStore } from './store/persistence';
 import { notify } from './store/toasts';
@@ -17,7 +18,10 @@ const TITLES: Record<string, string> = {
   NETWORK: 'Save failed',
 };
 
+const blobs = createIndexedDbBlobStore();
+
 const store = createAppStore({
+  blobs,
   initialData: persisted?.data,
   currentUserId: persisted?.currentUserId,
   settings: persisted?.settings,
@@ -25,6 +29,8 @@ const store = createAppStore({
   onError: (error) => notify.error(TITLES[error.code] ?? 'Something went wrong', error.message),
 });
 persistStore(store);
+// Drop stored files that no attachment record points to (e.g. after localStorage was cleared).
+void pruneBlobs(blobs, new Set(Object.keys(store.getState().data.attachments))).catch(() => {});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

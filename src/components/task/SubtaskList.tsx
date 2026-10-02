@@ -1,5 +1,5 @@
 import { Check, ChevronRight, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { TITLE_MAX } from '@/domain/tasks';
 import type { ID, Status, Task, User } from '@/domain/types';
 import { cn } from '@/lib/cn';
@@ -24,6 +24,7 @@ export function SubtaskList({
   onToggleSubtask: (taskId: ID, statusId: ID) => void;
 }) {
   const [title, setTitle] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
   const byId = Object.fromEntries(statuses.map((s) => [s.id, s]));
   const doneStatus = statuses.find((s) => s.category === 'done');
   const todoStatus = statuses.find((s) => s.category === 'todo') ?? statuses[0];
@@ -92,8 +93,21 @@ export function SubtaskList({
           );
         })}
         <li className="flex items-center gap-2.5 px-3 py-1.5">
-          <Plus className="h-4 w-4 text-ink-faint" aria-hidden />
+          <button
+            type="button"
+            aria-label="Add subtask"
+            title="Add subtask"
+            // With nothing typed there is nothing to add yet, so the plus just moves you to the field.
+            onClick={() => (title.trim() ? add() : inputRef.current?.focus())}
+            className={cn(
+              'flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-ink-faint transition-colors hover:bg-surface-sunken hover:text-brand-600',
+              FOCUS_RING,
+            )}
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+          </button>
           <input
+            ref={inputRef}
             value={title}
             maxLength={TITLE_MAX}
             aria-label="New subtask title"

@@ -4,6 +4,7 @@ import { columnTasks } from '@/domain/tasks';
 import { selectVisibleTree } from '@/domain/tree';
 import type { StoreError } from '@/domain/types';
 import { createAppStore } from './appStore';
+import { createMemoryBlobStore } from './blobs';
 
 const { users: U, lists: L, spaces: S, folders: F } = SEED_IDS;
 
@@ -210,6 +211,154 @@ describe('tasks', () => {
     expect(actions.createTask({ listId: L.backlog, title: 'sub', parentTaskId: 't_bl_6' }).data?.parentTaskId).toBe(
       't_bl_6',
     );
+  });
+});
+
+describe('comments and activity', () => {
+  const historyOf = (store: ReturnType<typeof setup>['store'], taskId: string) =>
+    Object.values(store.getState().data.activity).filter((e) => e.taskId === taskId);
+
+  it('records one entry per real change, none for a no-op or a rejected edit', () => {
+    const { store, actions } = setup(U.alice);
+    const before = historyOf(store, 't_sp_1').length;
+    actions.updateTask('t_sp_1', { priority: 'low' });
+    expect(historyOf(store, 't_sp_1')).toHaveLength(before + 1);
+
+    actions.updateTask('t_sp_1', { priority: 'low' }); // nothing changed
+    actions.updateTask('t_sp_1', { title: '   ' }); // VALIDATION
+    expect(historyOf(store, 't_sp_1')).toHaveLength(before + 1);
+  });
+
+  it('records the creation of a new task', () => {
+    const { store, actions } = setup(U.alice);
+    const task = actions.createTask({ listId: L.backlog, title: 'Fresh' }).data!;
+    expect(historyOf(store, task.id)).toMatchObject([{ kind: 'task.created', actorId: U.alice }]);
+  });
+
+  it('a rolled-back move leaves no history entry', async () => {
+    const { store, actions } = setup(U.alice, { simulateFailures: true });
+    const before = Object.keys(store.getState().data.activity);
+    await actions.moveTask({ taskId: 't_sp_1', toStatusId: statusId(L.sprint, 'done'), toIndex: 0 });
+    expect(Object.keys(store.getState().data.activity)).toEqual(before);
+  });
+
+  it('rejects a comment from a member without access and leaves state untouched', () => {
+    const { store, actions, errors } = setup(U.carol);
+    const before = store.getState().data;
+    expect(actions.addComment({ taskId: 't_sp_1', body: 'hi' }).error?.code).toBe('FORBIDDEN');
+    expect(store.getState().data).toBe(before);
+    expect(errors).toHaveLength(1);
+  });
+
+  it('deleting a task also removes its comments and history', () => {
+    const { store, actions } = setup(U.alice);
+    actions.deleteTask('t_sp_3'); // along with subtasks t_sp_3a and t_sp_3b
+    const gone = ['t_sp_3', 't_sp_3a', 't_sp_3b'];
+    expect(Object.values(store.getState().data.comments).some((c) => gone.includes(c.taskId))).toBe(false);
+    expect(Object.values(store.getState().data.activity).some((e) => gone.includes(e.taskId))).toBe(false);
+  });
+});
+
+describe('attachments', () => {
+  const png = (name = 'mock.png', bytes = 1024) => new File([new Uint8Array(bytes)], name, { type: 'image/png' });
+  function withBlobs(userId: string = U.alice) {
+    const blobs = createMemoryBlobStore();
+    const errors: StoreError[] = [];
+    const store = createAppStore({
+      initialData: createSeed(new Date('2026-06-01T12:00:00Z')),
+      currentUserId: userId,
+      settings: { latencyMs: 0 },
+      onError: (e) => errors.push(e),
+      ready: true,
+      blobs,
+    });
+    return { store, actions: store.getState().actions, blobs, errors };
+  }
+
+  it('stores the file, records it on the task and reads it back', async () => {
+    const { store, actions, blobs } = withBlobs();
+    const added = await actions.addAttachment('t_sp_1', png());
+    expect(added.data).toMatchObject({ taskId: 't_sp_1', name: 'mock.png', mime: 'image/png', size: 1024 });
+    expect(Object.keys(store.getState().data.attachments)).toEqual([added.data!.id]);
+    expect(await blobs.keys()).toEqual([added.data!.id]);
+    expect((await actions.getAttachmentBlob(added.data!.id)).data?.size).toBe(1024);
+  });
+
+  it('stores nothing when validation fails', async () => {
+    const { store, actions, blobs, errors } = withBlobs();
+    const svg = new File(['<svg/>'], 'x.svg', { type: 'image/svg+xml' });
+    expect((await actions.addAttachment('t_sp_1', svg)).error?.code).toBe('VALIDATION');
+    expect(await blobs.keys()).toEqual([]);
+    expect(store.getState().data.attachments).toEqual({});
+    expect(errors).toHaveLength(1);
+  });
+
+  it('refuses a member without access, for both adding and reading', async () => {
+    const owner = withBlobs(U.alice);
+    const { data } = await owner.actions.addAttachment('t_sp_1', png());
+    owner.actions.switchUser(U.carol); // denied on Sprint 14
+    expect((await owner.actions.addAttachment('t_sp_1', png())).error?.code).toBe('FORBIDDEN');
+    expect((await owner.actions.getAttachmentBlob(data!.id)).error?.code).toBe('FORBIDDEN');
+    expect(owner.actions.removeAttachment(data!.id).error?.code).toBe('FORBIDDEN');
+    expect(Object.keys(owner.store.getState().data.attachments)).toEqual([data!.id]);
+  });
+
+  it('deletes the stored file when the attachment or its task is removed', async () => {
+    const { actions, blobs } = withBlobs();
+    const first = (await actions.addAttachment('t_sp_1', png('a.png'))).data!;
+    const second = (await actions.addAttachment('t_sp_2', png('b.png'))).data!;
+
+    actions.removeAttachment(first.id);
+    await Promise.resolve();
+    expect(await blobs.keys()).toEqual([second.id]);
+
+    actions.deleteTask('t_sp_2');
+    await Promise.resolve();
+    expect(await blobs.keys()).toEqual([]);
+  });
+
+  it('keeps a draft that has an attachment when its drawer closes', async () => {
+    const { store, actions } = withBlobs();
+    const draft = actions.createTask({ listId: L.backlog, title: 'Untitled task' }).data!;
+    await actions.addAttachment(draft.id, png());
+    expect(actions.discardUntouchedDraft(draft.id)).toEqual({ data: [] });
+    expect(store.getState().data.tasks[draft.id]).toBeDefined();
+  });
+
+  it('clears stored files when the demo data is reset', async () => {
+    const { actions, blobs } = withBlobs();
+    await actions.addAttachment('t_sp_1', png());
+    actions.resetDemo();
+    await Promise.resolve();
+    expect(await blobs.keys()).toEqual([]);
+  });
+});
+
+describe('sprints', () => {
+  it('an admin starts a sprint, finishes a task, ends it and gets a frozen report', () => {
+    const { store, actions } = setup(U.alice);
+    const started = actions.startSprint({ listId: L.backlog, name: 'Sprint 1' });
+    expect(started.data).toMatchObject({ name: 'Sprint 1', endedAt: null });
+
+    actions.updateTask('t_bl_1', { statusId: statusId(L.backlog, 'done') });
+    const ended = actions.endSprint(started.data!.id);
+    expect(ended.data?.report).toMatchObject({ total: 9, done: 1, spilled: 8 });
+    expect(store.getState().data.sprints[started.data!.id].endedAt).not.toBeNull();
+  });
+
+  it('refuses members with a FORBIDDEN toast and leaves the data untouched', () => {
+    const { store, actions, errors } = setup(U.bob);
+    const before = store.getState().data;
+    expect(actions.startSprint({ listId: L.backlog, name: 'Mine' }).error?.code).toBe('FORBIDDEN');
+    expect(store.getState().data).toBe(before);
+    expect(errors).toMatchObject([{ code: 'FORBIDDEN', message: expect.stringContaining('start sprints') }]);
+  });
+
+  it('allows only one running sprint per list', () => {
+    const { actions } = setup(U.alice);
+    actions.startSprint({ listId: L.backlog, name: 'One' });
+    expect(actions.startSprint({ listId: L.backlog, name: 'Two' }).error?.code).toBe('CONFLICT');
+    expect(actions.startSprint({ listId: L.security, name: 'Elsewhere' }).data).toBeDefined();
   });
 });
 

@@ -1,16 +1,16 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, ListChecks, Plus } from 'lucide-react';
 import { useMemo, useState, type KeyboardEvent } from 'react';
 import { usersWithAccess } from '@/domain/permissions';
-import { selectListPage, type SortKey, type SortSpec } from '@/domain/selectors';
+import { isFiltering, selectListPage, type SortKey, type SortSpec, type TaskFilters } from '@/domain/selectors';
 import { TITLE_MAX } from '@/domain/tasks';
 import type { ID } from '@/domain/types';
 import { cn } from '@/lib/cn';
-import { useActions, useAppStore } from '@/store/hooks';
+import { useActions, useAppStore, useDataWith } from '@/store/hooks';
 import { FOCUS_RING, STATUS_STYLES } from '@/ui/tokens';
-import { AvatarStack } from '../ui/Avatar';
-import { DueDate, PriorityBadge, StatusIcon, StatusPill } from '../ui/Badges';
+import { StatusIcon } from '../ui/Badges';
 import { Button } from '../ui/Button';
-import { AssigneeFilter } from './AssigneeFilter';
+import { AssigneePicker } from '../task/AssigneePicker';
+import { DueDatePopover, InlineTitle, Isolate, PriorityMenu, StatusMenu } from '../task/InlineFields';
 
 const PAGE_SIZE = 10;
 
@@ -24,18 +24,31 @@ const COLUMNS: { key: SortKey; label: string; className: string }[] = [
 
 const SORTABLE: SortKey[] = ['title', 'status', 'priority', 'dueDate'];
 
-export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: ID) => void }) {
-  const data = useAppStore((s) => s.data);
+export function ListView({
+  listId,
+  filters,
+  onClearFilters,
+  onOpenTask,
+}: {
+  listId: ID;
+  filters: TaskFilters;
+  onClearFilters: () => void;
+  onOpenTask: (id: ID) => void;
+}) {
+  const data = useDataWith('tasks', 'statuses');
   const userId = useAppStore((s) => s.currentUserId);
   const [sort, setSort] = useState<SortSpec>({ key: 'manual', dir: 'asc' });
-  const [pages, setPages] = useState(1);
-  const [assignees, setAssignees] = useState<string[]>([]);
+  const { updateTask } = useActions();
+  // How many pages are loaded; a new filter starts back at the first page.
+  const filterKey = JSON.stringify(filters);
+  const [loaded, setLoaded] = useState({ key: filterKey, pages: 1 });
+  const pages = loaded.key === filterKey ? loaded.pages : 1;
   const people = useMemo(() => usersWithAccess(data, listId), [data, listId]);
 
   // Offset pagination over in-memory data: we ask the store for the first N pages.
   const page = useMemo(
-    () => selectListPage(data, userId, listId, { sort, offset: 0, limit: pages * PAGE_SIZE, assignees }),
-    [data, userId, listId, sort, pages, assignees],
+    () => selectListPage(data, userId, listId, { sort, offset: 0, limit: pages * PAGE_SIZE, ...filters }),
+    [data, userId, listId, sort, pages, filters],
   );
   if (page.error) return null; // ListScreen renders the 403 state before we get here.
   const { rows, total, nextOffset, subtaskProgress } = page.data;
@@ -50,16 +63,13 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
     });
   };
 
-  const filterBy = (ids: string[]) => {
-    setAssignees(ids);
-    setPages(1); // a new filter starts back at the first page
-  };
+  const statusList = Object.values(data.statuses)
+    .filter((st) => st.listId === listId)
+    .sort((x, y) => x.position - y.position);
+  const filtering = isFiltering(filters);
 
   return (
-    <div className="h-full overflow-y-auto px-6 pb-8 pt-4">
-      <div className="mb-3 flex items-center">
-        <AssigneeFilter people={people} selected={assignees} onChange={filterBy} />
-      </div>
+    <div className="h-full overflow-y-auto px-6 pb-8 pt-3">
       <div className="overflow-hidden rounded-panel bg-surface shadow-card">
         <table className="w-full table-fixed border-collapse text-sm" data-testid="task-table">
           <thead className="sticky top-0 z-10 bg-surface-muted">
@@ -106,6 +116,8 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
               const progress = subtaskProgress[task.id];
               const open = () => onOpenTask(task.id);
               const onKeyDown = (e: KeyboardEvent) => {
+                // Only the row itself opens the drawer; Enter or Space inside a menu or the title editor must not.
+                if (e.target !== e.currentTarget) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   open();
@@ -127,14 +139,14 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
                         category={status?.category ?? 'todo'}
                         className={status ? STATUS_STYLES[status.color].text : ''}
                       />
-                      <span
-                        className={cn(
+                      <InlineTitle
+                        value={task.title}
+                        textClassName={cn(
                           'truncate font-medium text-ink group-hover:text-brand-800',
                           done && 'text-ink-muted line-through decoration-ink-faint',
                         )}
-                      >
-                        {task.title}
-                      </span>
+                        onSave={(title) => updateTask(task.id, { title })}
+                      />
                       {progress && (
                         <span className="inline-flex shrink-0 items-center gap-1 text-xs text-ink-subtle">
                           <ListChecks className="h-3.5 w-3.5" /> {progress.done}/{progress.total}
@@ -143,35 +155,51 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
                     </div>
                   </td>
                   <td className="px-4 py-2.5">
-                    <StatusPill status={status} />
+                    <StatusMenu
+                      status={status}
+                      statuses={statusList}
+                      taskTitle={task.title}
+                      variant="pill"
+                      onChange={(statusId) => updateTask(task.id, { statusId })}
+                    />
                   </td>
                   <td className="px-4 py-2.5">
-                    {task.assigneeIds.length ? (
-                      <AvatarStack users={task.assigneeIds.map((id) => data.users[id]).filter(Boolean)} size="sm" />
-                    ) : (
-                      <span className="text-xs text-ink-faint">—</span>
-                    )}
+                    <Isolate>
+                      <AssigneePicker
+                        compact
+                        assigneeIds={task.assigneeIds}
+                        candidates={people}
+                        users={data.users}
+                        onChange={(assigneeIds) => updateTask(task.id, { assigneeIds })}
+                      />
+                    </Isolate>
                   </td>
                   <td className="px-4 py-2.5">
-                    {task.priority === 'none' ? (
-                      <span className="text-xs text-ink-faint">—</span>
-                    ) : (
-                      <PriorityBadge priority={task.priority} />
-                    )}
+                    <PriorityMenu
+                      priority={task.priority}
+                      taskTitle={task.title}
+                      onChange={(priority) => updateTask(task.id, { priority })}
+                    />
                   </td>
                   <td className="px-4 py-2.5">
-                    <DueDate iso={task.dueDate} done={done} />
+                    <DueDatePopover
+                      iso={task.dueDate}
+                      done={done}
+                      taskTitle={task.title}
+                      onChange={(dueDate) => updateTask(task.id, { dueDate })}
+                    />
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        {rows.length === 0 && assignees.length > 0 && (
+        {rows.length === 0 && filtering && (
           <div className="flex items-center justify-center gap-3 border-t border-line px-4 py-8 text-sm text-ink-subtle">
-            No tasks match this assignee filter.
-            <Button size="sm" variant="ghost" onClick={() => filterBy([])}>
-              Clear filter
+            {filters.query.trim() ? `No tasks match “${filters.query.trim()}”` : 'No tasks match this assignee filter'}
+            {filters.query.trim() && filters.assignees.length > 0 && ' and the assignee filter'}.
+            <Button size="sm" variant="ghost" onClick={onClearFilters}>
+              Clear {filters.query.trim() && filters.assignees.length > 0 ? 'all' : 'filter'}
             </Button>
           </div>
         )}
@@ -183,7 +211,8 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
         <span>
           Showing <span className="font-semibold tabular-nums text-ink-muted">{rows.length}</span> of{' '}
           <span className="font-semibold tabular-nums text-ink-muted">{total}</span> tasks
-          {assignees.length > 0 && <> · filtered by assignee</>}
+          {filters.query.trim() && <> · matching “{filters.query.trim()}”</>}
+          {filters.assignees.length > 0 && <> · filtered by assignee</>}
           {sort.key !== 'manual' && (
             <>
               {' '}
@@ -193,7 +222,7 @@ export function ListView({ listId, onOpenTask }: { listId: ID; onOpenTask: (id: 
           )}
         </span>
         {nextOffset !== null && (
-          <Button size="sm" onClick={() => setPages((p) => p + 1)}>
+          <Button size="sm" onClick={() => setLoaded({ key: filterKey, pages: pages + 1 })}>
             Load {Math.min(PAGE_SIZE, total - nextOffset)} more
           </Button>
         )}

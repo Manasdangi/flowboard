@@ -7,9 +7,9 @@ import type { DataState, ID } from '@/domain/types';
 import type { AppStore } from './appStore';
 import type { TransportSettings } from './transport';
 
-const KEY = 'flowboard:v3';
-// v3: multiple assignees per task again; older saves are discarded so the demo reseeds.
-const SCHEMA_VERSION = 3;
+const KEY = 'flowboard:v7';
+// v7: @-mentions on comments; older saves are discarded so the demo reseeds.
+const SCHEMA_VERSION = 7;
 
 interface Persisted {
   version: number;

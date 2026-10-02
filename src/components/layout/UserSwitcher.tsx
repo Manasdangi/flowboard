@@ -2,7 +2,7 @@ import { Check, ChevronDown, FlaskConical, RotateCcw, ShieldCheck } from 'lucide
 import { selectVisibleLists } from '@/domain/tree';
 import { cn } from '@/lib/cn';
 import { notify } from '@/store/toasts';
-import { useActions, useAppStore, useCurrentUser, useData } from '@/store/hooks';
+import { useActions, useAppStore, useCurrentUser, useDataWith } from '@/store/hooks';
 import { FOCUS_RING } from '@/ui/tokens';
 import { Avatar } from '../ui/Avatar';
 import { Menu, MenuAction, MenuButton, MenuDivider, MenuLabel, MenuPanel } from '../ui/Menu';
@@ -23,7 +23,7 @@ function RoleBadge({ role }: { role: 'admin' | 'member' }) {
 }
 
 export function UserSwitcher() {
-  const data = useData();
+  const data = useDataWith();
   const current = useCurrentUser();
   const settings = useAppStore((s) => s.settings);
   const { switchUser, setSettings, resetDemo } = useActions();

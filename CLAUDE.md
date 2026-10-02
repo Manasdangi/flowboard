@@ -42,6 +42,7 @@ Data flow: component → `useActions().x()` → `commit(domainFn(data, actorId, 
 ## Conventions
 
 - Match the surrounding style. Named exports; only export what's imported elsewhere.
+- Subscribe to slices, never the whole data set: `useDataWith('tasks', 'statuses')`. Domain read functions take `DataWith<…>` so this type-checks; `src/test/subscriptions.test.tsx` guards it.
 - Screen components read the store; the components they render take props and callbacks. `ui/*` (except `Toaster`) and the sidebar tree files are lint-enforced as props-only (`eslint.config.js`).
 - Tests: domain rules → `src/domain/*.test.ts`, store → `src/store/appStore.test.ts`, user flows → `src/test/App.test.tsx`, real drag-and-drop → `e2e/`.
 - Keep `README.md` in sync with behaviour changes. Don't edit `AI_USAGE.md` unless asked.

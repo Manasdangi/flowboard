@@ -1,6 +1,6 @@
 import { byPosition } from './ordering';
 import { canViewContainer, isArchivedPath } from './permissions';
-import type { Container, ContainerType, DataState, ID } from './types';
+import type { AccessData, Container, ContainerType, ID } from './types';
 
 export interface TreeNode {
   container: Container;
@@ -16,14 +16,14 @@ export const CHILD_TYPE: Record<ContainerType, ContainerType | null> = {
 };
 
 /** Direct children of a container, in sibling order. Archived ones are skipped unless asked for. */
-export function childrenOf(data: DataState, parentId: ID, opts: { includeArchived?: boolean } = {}): Container[] {
+export function childrenOf(data: AccessData, parentId: ID, opts: { includeArchived?: boolean } = {}): Container[] {
   return Object.values(data.containers)
     .filter((c) => c.parentId === parentId && (opts.includeArchived || !c.archivedAt))
     .sort(byPosition);
 }
 
 /** A container and its visible descendants, descending only through containers the user can see. */
-function visibleSubtree(data: DataState, userId: ID, parentId: ID): TreeNode[] {
+function visibleSubtree(data: AccessData, userId: ID, parentId: ID): TreeNode[] {
   return childrenOf(data, parentId)
     .filter((c) => canViewContainer(data, userId, c.id))
     .map((container) => ({ container, children: visibleSubtree(data, userId, container.id) }));
@@ -34,7 +34,7 @@ function visibleSubtree(data: DataState, userId: ID, parentId: ID): TreeNode[] {
  * container hides its whole subtree here; anything shared with the user
  * inside it appears in `selectSharedWithMe` instead. Archived subtrees are dropped.
  */
-export function selectVisibleTree(data: DataState, userId: ID): TreeNode[] {
+export function selectVisibleTree(data: AccessData, userId: ID): TreeNode[] {
   return visibleSubtree(data, userId, data.workspaceId);
 }
 
@@ -43,7 +43,7 @@ export function selectVisibleTree(data: DataState, userId: ID): TreeNode[] {
  * on a list inside a private space). Shown under "Shared with me", so the
  * hidden parents are never revealed, not even by name.
  */
-export function selectSharedWithMe(data: DataState, userId: ID): TreeNode[] {
+export function selectSharedWithMe(data: AccessData, userId: ID): TreeNode[] {
   const out: TreeNode[] = [];
   const walk = (parentId: ID, parentVisible: boolean) => {
     for (const container of childrenOf(data, parentId)) {
@@ -57,7 +57,7 @@ export function selectSharedWithMe(data: DataState, userId: ID): TreeNode[] {
 }
 
 /** Flat list of lists the user can open (main tree first, then shared), in tree order. */
-export function selectVisibleLists(data: DataState, userId: ID): Container[] {
+export function selectVisibleLists(data: AccessData, userId: ID): Container[] {
   const out: Container[] = [];
   const walk = (nodes: TreeNode[]) => {
     for (const n of nodes) {
@@ -71,7 +71,7 @@ export function selectVisibleLists(data: DataState, userId: ID): Container[] {
 }
 
 /** Root → node (excluding the workspace). Use `visibleAncestorsOf` for anything shown to a user. */
-export function ancestorsOf(data: DataState, id: ID): Container[] {
+export function ancestorsOf(data: AccessData, id: ID): Container[] {
   const path: Container[] = [];
   let node: Container | undefined = data.containers[id];
   while (node && node.type !== 'workspace') {
@@ -82,12 +82,12 @@ export function ancestorsOf(data: DataState, id: ID): Container[] {
 }
 
 /** Breadcrumb path for a user: ancestors they can't see are left out, so their names never leak. */
-export function visibleAncestorsOf(data: DataState, userId: ID, id: ID): Container[] {
+export function visibleAncestorsOf(data: AccessData, userId: ID, id: ID): Container[] {
   return ancestorsOf(data, id).filter((c) => canViewContainer(data, userId, c.id));
 }
 
 /** Ids of every container below `id`, at any depth (archived ones included). */
-export function descendantIds(data: DataState, id: ID): ID[] {
+export function descendantIds(data: AccessData, id: ID): ID[] {
   const out: ID[] = [];
   const walk = (parentId: ID) => {
     for (const c of Object.values(data.containers)) {
@@ -102,7 +102,7 @@ export function descendantIds(data: DataState, id: ID): ID[] {
 }
 
 /** Admin-only view: top-most archived containers (restoring one restores its subtree). */
-export function selectArchived(data: DataState): Container[] {
+export function selectArchived(data: AccessData): Container[] {
   return Object.values(data.containers)
     .filter((c) => c.archivedAt && !(c.parentId && isArchivedPath(data, c.parentId)))
     .sort((a, b) => (b.archivedAt ?? '').localeCompare(a.archivedAt ?? ''));

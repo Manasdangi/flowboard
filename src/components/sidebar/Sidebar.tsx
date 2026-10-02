@@ -4,7 +4,7 @@ import { selectArchived, selectSharedWithMe, selectVisibleTree } from '@/domain/
 import type { ID } from '@/domain/types';
 import { cn } from '@/lib/cn';
 import { useRoute } from '@/lib/router';
-import { useActions, useAppStore, useCurrentUser, useData, useIsAdmin } from '@/store/hooks';
+import { useActions, useAppStore, useCurrentUser, useDataWith, useIsAdmin, useTaskCounts } from '@/store/hooks';
 import { uiStore } from '@/store/ui';
 import { FOCUS_RING } from '@/ui/tokens';
 import { Kbd } from '../ui/Kbd';
@@ -19,7 +19,7 @@ import { WorkspaceName } from './WorkspaceName';
  * callbacks down. Everything it renders (tree, rows, header, archive) is props-only.
  */
 export function Sidebar() {
-  const data = useData();
+  const data = useDataWith();
   const user = useCurrentUser();
   const isAdmin = useIsAdmin();
   const boot = useAppStore((s) => s.boot);
@@ -30,12 +30,7 @@ export function Sidebar() {
   const tree = useMemo(() => selectVisibleTree(data, user.id), [data, user.id]);
   const shared = useMemo(() => selectSharedWithMe(data, user.id), [data, user.id]);
   const archived = useMemo(() => selectArchived(data), [data]);
-  const taskCounts = useMemo(() => {
-    const counts: Record<ID, number> = {};
-    for (const t of Object.values(data.tasks))
-      if (!t.parentTaskId) counts[t.primaryListId] = (counts[t.primaryListId] ?? 0) + 1;
-    return counts;
-  }, [data.tasks]);
+  const taskCounts = useTaskCounts();
   const workspace = data.containers[data.workspaceId];
 
   const openCreate = (parentId: ID) => uiStore.getState().openDialog({ kind: 'create', parentId });

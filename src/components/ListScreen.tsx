@@ -1,20 +1,23 @@
 import { Archive, ClipboardList, KanbanSquare, List as ListIcon, Lock, Plus, Settings2, Share2 } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
-import { selectBoard } from '@/domain/selectors';
+import { useEffect, useMemo, useState } from 'react';
+import { usersWithAccess } from '@/domain/permissions';
+import { NO_FILTERS, selectBoard, selectSprints, type TaskFilters } from '@/domain/selectors';
 import { selectVisibleLists } from '@/domain/tree';
 import { cn } from '@/lib/cn';
 import { useRoute, type ViewMode } from '@/lib/router';
-import { useActions, useAppStore, useCurrentUser, useData, useIsAdmin } from '@/store/hooks';
+import { useActions, useAppStore, useCurrentUser, useDataWith, useIsAdmin } from '@/store/hooks';
 import { uiStore } from '@/store/ui';
 import { FOCUS_RING } from '@/ui/tokens';
 import { BoardView } from './board/BoardView';
+import { FilterBar } from './list/FilterBar';
+import { SprintStrip } from './sprint/SprintStrip';
 import { ListView } from './list/ListView';
 import { Button } from './ui/Button';
 import { EmptyState } from './ui/EmptyState';
 import { BoardSkeleton, ListSkeleton, Skeleton } from './ui/Skeleton';
 
 export function ListScreen() {
-  const data = useData();
+  const data = useDataWith('tasks', 'statuses', 'sprints');
   const user = useCurrentUser();
   const isAdmin = useIsAdmin();
   const boot = useAppStore((s) => s.boot);
@@ -38,6 +41,16 @@ export function ListScreen() {
 
   // Permission check lives in the selector: switching users re-runs this immediately.
   const board = useMemo(() => (listId ? selectBoard(data, user.id, listId) : null), [data, user.id, listId]);
+  // Filters belong to the list being viewed and carry over between Board and List.
+  const [filterState, setFilterState] = useState<{ listId: string | null; filters: TaskFilters }>({
+    listId: null,
+    filters: NO_FILTERS,
+  });
+  const filters = filterState.listId === listId ? filterState.filters : NO_FILTERS;
+  const changeFilters = (patch: Partial<TaskFilters>) => setFilterState({ listId, filters: { ...filters, ...patch } });
+  const people = useMemo(() => (listId ? usersWithAccess(data, listId) : []), [data, listId]);
+
+  const sprints = useMemo(() => (listId ? selectSprints(data, user.id, listId) : null), [data, user.id, listId]);
 
   if (boot === 'loading' || (listId && loadingListId === listId)) {
     return (
@@ -137,6 +150,23 @@ export function ListScreen() {
         </Button>
       </div>
 
+      {sprints?.data && (
+        <SprintStrip
+          active={sprints.data.active}
+          past={sprints.data.past}
+          isAdmin={isAdmin}
+          onStart={() => uiStore.getState().openDialog({ kind: 'sprint-start', listId: list.id })}
+          onEnd={() => uiStore.getState().openDialog({ kind: 'sprint-end', listId: list.id })}
+          onOpenReport={(sprintId) => uiStore.getState().openDialog({ kind: 'sprint-report', sprintId })}
+        />
+      )}
+
+      {taskCount > 0 && (
+        <div className="shrink-0 px-6 pt-3">
+          <FilterBar filters={filters} people={people} onChange={changeFilters} />
+        </div>
+      )}
+
       <div className="min-h-0 flex-1">
         {taskCount === 0 && view === 'list' ? (
           <EmptyState
@@ -151,7 +181,13 @@ export function ListScreen() {
             Tasks you add to this list will show up here, sortable by due date and priority.
           </EmptyState>
         ) : view === 'list' ? (
-          <ListView key={list.id} listId={list.id} onOpenTask={openTask} />
+          <ListView
+            key={list.id}
+            listId={list.id}
+            filters={filters}
+            onClearFilters={() => changeFilters(NO_FILTERS)}
+            onOpenTask={openTask}
+          />
         ) : (
           <div className="flex h-full flex-col">
             {taskCount === 0 && (
@@ -161,7 +197,13 @@ export function ListScreen() {
               </p>
             )}
             <div className="min-h-0 flex-1">
-              <BoardView board={board.data} onOpenTask={openTask} />
+              <BoardView
+                board={board.data}
+                filters={filters}
+                people={people}
+                onClearFilters={() => changeFilters(NO_FILTERS)}
+                onOpenTask={openTask}
+              />
             </div>
           </div>
         )}

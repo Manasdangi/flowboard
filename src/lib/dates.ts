@@ -13,13 +13,7 @@ export function describeDue(
   const due = new Date(iso);
   const days = Math.round((startOfDay(due) - startOfDay(now)) / DAY);
   const full = due.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-  const short = due.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    ...(due.getFullYear() !== now.getFullYear() && { year: 'numeric' }),
-  });
-
-  let label = short;
+  let label = formatDay(iso, now);
   if (days === 0) label = 'Today';
   else if (days === 1) label = 'Tomorrow';
   else if (days === -1) label = 'Yesterday';
@@ -30,6 +24,16 @@ export function describeDue(
   else if (days === 0) tone = 'today';
   else if (days <= 3) tone = 'soon';
   return { label, tone, full };
+}
+
+/** Short calendar date, e.g. "5 Oct"; the year is added only if it isn't the current one. */
+export function formatDay(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    ...(d.getFullYear() !== now.getFullYear() && { year: 'numeric' }),
+  });
 }
 
 /** ISO → value for <input type="date"> in local time. */

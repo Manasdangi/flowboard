@@ -15,6 +15,8 @@
  *         └── Launch Content   public      — Bob: ALLOW (appears in his "Shared with me")
  */
 import type {
+  ActivityEvent,
+  Comment,
   Container,
   DataState,
   Grant,
@@ -513,6 +515,83 @@ export function createSeed(now: Date = new Date()): DataState {
     { id: 'g_carol_sprint', resourceId: L.sprint, userId: U.carol, mode: 'deny' },
   ];
 
+  const comments: Comment[] = [
+    {
+      id: 'cmt_sp3_1',
+      taskId: 't_sp_3',
+      authorId: U.alice,
+      body: '@Bob Martinez keyboard users need this too: Space to pick a card up, arrows to move it, Space to drop.',
+      createdAt: at(5),
+      mentions: [U.bob],
+      readBy: [], // Bob has not read this one yet
+    },
+    {
+      id: 'cmt_sp3_2',
+      taskId: 't_sp_3',
+      authorId: U.bob,
+      body: '@Alice Chen done in the latest push. Enter still opens the card, so Space is the only key that starts a drag.',
+      createdAt: at(4.5),
+      mentions: [U.alice],
+      readBy: [U.alice],
+    },
+    {
+      id: 'cmt_lc1_0',
+      taskId: 't_lc_1',
+      authorId: U.alice,
+      body: '@Carol Singh @Bob Martinez could you both review the draft before Friday?',
+      createdAt: at(3),
+      mentions: [U.carol, U.bob],
+      readBy: [],
+    },
+    {
+      id: 'cmt_lc1_1',
+      taskId: 't_lc_1',
+      authorId: U.carol,
+      body: 'Happy to review the draft once it’s ready.',
+      createdAt: at(2),
+      mentions: [],
+      readBy: [],
+    },
+  ];
+
+  const activity: ActivityEvent[] = [
+    // Every task starts with a "created" entry…
+    ...tasks.map((t): ActivityEvent => ({
+      id: `act_${t.id}_created`,
+      at: t.createdAt,
+      actorId: t.createdBy,
+      taskId: t.id,
+      kind: 'task.created',
+      changes: [],
+    })),
+    // …and a few carry real history.
+    {
+      id: 'act_sp3_status',
+      at: at(7),
+      actorId: U.bob,
+      taskId: 't_sp_3',
+      kind: 'task.updated',
+      changes: [{ field: 'status', from: statusId(L.sprint, 'todo'), to: statusId(L.sprint, 'doing') }],
+    },
+    {
+      id: 'act_sp3_priority',
+      at: at(6),
+      actorId: U.alice,
+      taskId: 't_sp_3',
+      kind: 'task.updated',
+      changes: [{ field: 'priority', from: 'high', to: 'urgent' }],
+    },
+    {
+      // Moved out of Sprint 14, which Carol is denied on: she sees "a list you can't see".
+      id: 'act_bl5_moved',
+      at: at(9),
+      actorId: U.alice,
+      taskId: 't_bl_5',
+      kind: 'task.updated',
+      changes: [{ field: 'list', from: L.sprint, to: L.backlog }],
+    },
+  ];
+
   const byId = <T extends { id: ID }>(items: T[]) => Object.fromEntries(items.map((x) => [x.id, x]));
   return {
     workspaceId: SEED_IDS.workspace,
@@ -521,5 +600,9 @@ export function createSeed(now: Date = new Date()): DataState {
     statuses: byId(statuses),
     tasks: byId(tasks),
     grants: byId(grants),
+    comments: byId(comments),
+    attachments: {},
+    sprints: {},
+    activity: byId(activity),
   };
 }

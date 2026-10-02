@@ -15,14 +15,22 @@ export const TITLE_MAX = 500;
 export const PRIORITIES: Priority[] = ['urgent', 'high', 'normal', 'low', 'none'];
 
 /** Top-level tasks in one status column, ordered. */
-export function columnTasks(data: DataState, listId: ID, statusId: ID): Task[] {
+export function columnTasks(data: Pick<DataState, 'tasks'>, listId: ID, statusId: ID): Task[] {
   return Object.values(data.tasks)
     .filter((t) => t.primaryListId === listId && t.statusId === statusId && !t.parentTaskId)
     .sort(byPosition);
 }
 
+/** How many top-level tasks each list holds (subtasks aren't counted, to match the board). */
+export function topLevelTaskCounts(tasks: DataState['tasks']): Record<ID, number> {
+  const counts: Record<ID, number> = {};
+  for (const t of Object.values(tasks))
+    if (!t.parentTaskId) counts[t.primaryListId] = (counts[t.primaryListId] ?? 0) + 1;
+  return counts;
+}
+
 /** A task's subtasks, ordered. */
-export function subtasksOf(data: DataState, parentId: ID): Task[] {
+export function subtasksOf(data: Pick<DataState, 'tasks'>, parentId: ID): Task[] {
   return Object.values(data.tasks)
     .filter((t) => t.parentTaskId === parentId)
     .sort(byPosition);
@@ -212,22 +220,35 @@ export function moveTask(data: DataState, actorId: ID, input: MoveTaskInput, now
   return ok({ state: { ...data, tasks }, value: tasks[task.id] });
 }
 
-/** Delete a task and its subtasks; returns everything removed (for the "along with N subtasks" toast). */
+/**
+ * Delete a task and its subtasks, along with their comments, attachments and history.
+ * Returns the removed tasks (for the "along with N subtasks" toast).
+ */
 export function deleteTask(data: DataState, actorId: ID, taskId: ID): Result<Change<Task[]>> {
   const found = guardTask(data, actorId, taskId);
   if (found.error) return found;
   const removed = [found.data, ...subtasksOf(data, taskId)];
+  const gone = new Set(removed.map((t) => t.id));
   const tasks = { ...data.tasks };
-  for (const t of removed) delete tasks[t.id];
-  return ok({ state: { ...data, tasks }, value: removed });
+  for (const id of gone) delete tasks[id];
+  const comments = Object.fromEntries(Object.entries(data.comments).filter(([, c]) => !gone.has(c.taskId)));
+  const attachments = Object.fromEntries(Object.entries(data.attachments).filter(([, a]) => !gone.has(a.taskId)));
+  const activity = Object.fromEntries(Object.entries(data.activity).filter(([, e]) => !gone.has(e.taskId)));
+  return ok({ state: { ...data, tasks, comments, attachments, activity }, value: removed });
 }
 
 /**
  * A task made by "New task" and closed without any edit is thrown away, like a
- * blank draft. Edited drafts, drafts with subtasks and already-deleted ones are left alone.
+ * blank draft. Edited drafts, drafts with subtasks, comments or attachments, and
+ * already-deleted ones are left alone.
  */
 export function discardUntouchedDraft(data: DataState, actorId: ID, taskId: ID): Result<Change<Task[]>> {
   const draft = data.tasks[taskId];
-  const untouched = draft && draft.updatedAt === draft.createdAt && subtasksOf(data, taskId).length === 0;
+  const untouched =
+    draft &&
+    draft.updatedAt === draft.createdAt &&
+    subtasksOf(data, taskId).length === 0 &&
+    !Object.values(data.comments).some((c) => c.taskId === taskId) &&
+    !Object.values(data.attachments).some((a) => a.taskId === taskId);
   return untouched ? deleteTask(data, actorId, taskId) : ok({ state: data, value: [] });
 }

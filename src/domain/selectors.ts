@@ -2,12 +2,29 @@
  * Read models. Each selector takes the current user and returns
  * `{ data }` or `{ error }` — a forbidden list yields a 403, never data.
  */
-import { guardTask, guardViewList, usersWithAccess } from './permissions';
-import { ok } from './result';
+import { canViewContainer, guardTask, guardViewList, usersWithAccess } from './permissions';
+import { fail, notFound, ok } from './result';
 import { statusesForList } from './statuses';
+import { activeSprint, sprintProgress } from './sprints';
 import { columnTasks, subtasksOf } from './tasks';
 import { selectVisibleLists, visibleAncestorsOf } from './tree';
-import type { Container, DataState, ID, Priority, Result, Status, Task, User } from './types';
+import type {
+  ActivityChange,
+  ActivityEvent,
+  Attachment,
+  Container,
+  DataState,
+  DataWith,
+  ID,
+  ISODate,
+  Priority,
+  Result,
+  Sprint,
+  SprintReport,
+  Status,
+  Task,
+  User,
+} from './types';
 
 export interface BoardColumn {
   status: Status;
@@ -24,7 +41,7 @@ export interface BoardModel {
 }
 
 /** Subtask done/total counts for each task that has subtasks (the "2/3" badge on cards and rows). */
-function progressFor(data: DataState, parents: Task[]) {
+function progressFor(data: Pick<DataState, 'tasks' | 'statuses'>, parents: Task[]) {
   const progress: BoardModel['subtaskProgress'] = {};
   for (const p of parents) {
     const subs = subtasksOf(data, p.id);
@@ -38,7 +55,13 @@ function progressFor(data: DataState, parents: Task[]) {
   return progress;
 }
 
-/** Case-insensitive match on title or description. An empty query matches everything. */
+/** Case-insensitive match on the task name only (the list view's search). An empty query matches everything. */
+function matchesTitle(task: Task, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return !q || task.title.toLowerCase().includes(q);
+}
+
+/** Case-insensitive match on title or description (the ⌘K search). An empty query matches everything. */
 function matchesQuery(task: Task, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -46,7 +69,7 @@ function matchesQuery(task: Task, query: string): boolean {
 }
 
 /** Kanban model for one list: its statuses as columns, each with its ordered top-level tasks (403 if hidden). */
-export function selectBoard(data: DataState, userId: ID, listId: ID): Result<BoardModel> {
+export function selectBoard(data: DataWith<'tasks' | 'statuses'>, userId: ID, listId: ID): Result<BoardModel> {
   const denied = guardViewList(data, userId, listId);
   if (denied) return { error: denied };
   const statuses = statusesForList(data, listId);
@@ -118,9 +141,27 @@ function matchesAssignees(task: Task, filter: string[]): boolean {
   return task.assigneeIds.some((id) => filter.includes(id));
 }
 
+/** What the list and board toolbars narrow tasks by. Empty means no filter. */
+export interface TaskFilters {
+  /** Matches the task name. */
+  query: string;
+  /** Matches a task assigned to ANY of these people (or `UNASSIGNED`). */
+  assignees: ID[];
+}
+
+export const NO_FILTERS: TaskFilters = { query: '', assignees: [] };
+
+/** True when either filter is set. */
+export const isFiltering = (f: TaskFilters): boolean => f.query.trim() !== '' || f.assignees.length > 0;
+
+/** Does the task pass both filters? Used by the list page and by the board's cards. */
+export function taskMatchesFilters(task: Task, filters: Partial<TaskFilters>): boolean {
+  return matchesTitle(task, filters.query ?? '') && matchesAssignees(task, filters.assignees ?? []);
+}
+
 /** One page of the list view: filter → sort → slice, plus total and next offset (403 if hidden). */
 export function selectListPage(
-  data: DataState,
+  data: DataWith<'tasks' | 'statuses'>,
   userId: ID,
   listId: ID,
   opts: { sort: SortSpec; offset?: number; limit?: number; query?: string; assignees?: string[] },
@@ -128,11 +169,7 @@ export function selectListPage(
   const denied = guardViewList(data, userId, listId);
   if (denied) return { error: denied };
   const all = Object.values(data.tasks).filter(
-    (t) =>
-      t.primaryListId === listId &&
-      !t.parentTaskId &&
-      matchesQuery(t, opts.query ?? '') &&
-      matchesAssignees(t, opts.assignees ?? []),
+    (t) => t.primaryListId === listId && !t.parentTaskId && taskMatchesFilters(t, opts),
   );
   const sorted = sortTasks(all, opts.sort, data.statuses);
   const offset = opts.offset ?? 0;
@@ -161,13 +198,82 @@ export interface TaskDetail {
   assignableUsers: User[];
   /** Lists this user may move the task to. */
   movableLists: Container[];
+  /** Comments and history, oldest first. */
+  activity: TimelineItem[];
+  /** Images and videos on the task, oldest first. */
+  attachments: Attachment[];
+}
+
+/** An ActivityChange with ids resolved to display names. `null` = deleted, or a list the viewer can't see. */
+export type TimelineChange =
+  | Exclude<ActivityChange, { field: 'status' | 'list' | 'assignees' }>
+  | { field: 'status' | 'list'; from: string | null; to: string | null }
+  | { field: 'assignees'; added: string[]; removed: string[] };
+
+export type TimelineItem =
+  | { type: 'comment'; id: ID; at: ISODate; actor: User | undefined; body: string; mentions: ID[] }
+  | {
+      type: 'event';
+      id: ID;
+      at: ISODate;
+      actor: User | undefined;
+      kind: ActivityEvent['kind'];
+      changes: TimelineChange[];
+    };
+
+/** Resolve one change for display. List names are only revealed if the viewer can see that list. */
+function resolveChange(data: DataWith<'statuses'>, userId: ID, change: ActivityChange): TimelineChange {
+  const userName = (id: ID) => data.users[id]?.name ?? 'someone';
+  switch (change.field) {
+    case 'status':
+      return {
+        field: 'status',
+        from: data.statuses[change.from]?.name ?? null,
+        to: data.statuses[change.to]?.name ?? null,
+      };
+    case 'list': {
+      const name = (id: ID) => (canViewContainer(data, userId, id) ? data.containers[id].name : null);
+      return { field: 'list', from: name(change.from), to: name(change.to) };
+    }
+    case 'assignees':
+      return { field: 'assignees', added: change.added.map(userName), removed: change.removed.map(userName) };
+    default:
+      return change;
+  }
+}
+
+/** A task's comments and history merged into one oldest-first timeline. Callers must guard the task first. */
+function timelineFor(data: DataWith<'activity' | 'comments' | 'statuses'>, userId: ID, taskId: ID): TimelineItem[] {
+  const items: TimelineItem[] = [];
+  for (const e of Object.values(data.activity)) {
+    if (e.taskId !== taskId) continue;
+    const changes = e.changes.map((c) => resolveChange(data, userId, c));
+    items.push({ type: 'event', id: e.id, at: e.at, actor: data.users[e.actorId], kind: e.kind, changes });
+  }
+  for (const c of Object.values(data.comments)) {
+    if (c.taskId === taskId) {
+      items.push({
+        type: 'comment',
+        id: c.id,
+        at: c.createdAt,
+        actor: data.users[c.authorId],
+        body: c.body,
+        mentions: c.mentions,
+      });
+    }
+  }
+  return items.sort((a, b) => a.at.localeCompare(b.at));
 }
 
 /**
  * Everything the task drawer needs, in one permission-checked call. Breadcrumbs,
- * assignee suggestions and move targets are all filtered to what the user can see.
+ * assignee suggestions, move targets and history are all filtered to what the user can see.
  */
-export function selectTaskDetail(data: DataState, userId: ID, taskId: ID): Result<TaskDetail> {
+export function selectTaskDetail(
+  data: DataWith<'tasks' | 'statuses' | 'comments' | 'activity' | 'attachments'>,
+  userId: ID,
+  taskId: ID,
+): Result<TaskDetail> {
   const found = guardTask(data, userId, taskId);
   if (found.error) return found;
   const task = found.data;
@@ -180,6 +286,10 @@ export function selectTaskDetail(data: DataState, userId: ID, taskId: ID): Resul
     parent: task.parentTaskId ? (data.tasks[task.parentTaskId] ?? null) : null,
     assignableUsers: usersWithAccess(data, task.primaryListId),
     movableLists: selectVisibleLists(data, userId),
+    activity: timelineFor(data, userId, task.id),
+    attachments: Object.values(data.attachments)
+      .filter((a) => a.taskId === task.id)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   });
 }
 
@@ -194,7 +304,7 @@ export interface SearchHit {
 }
 
 /** ⌘K search over lists the user can see; title matches rank first, then most recently updated. */
-export function searchTasks(data: DataState, userId: ID, query: string, limit = 20): SearchHit[] {
+export function searchTasks(data: DataWith<'tasks' | 'statuses'>, userId: ID, query: string, limit = 20): SearchHit[] {
   if (!query.trim()) return [];
   const visible = new Map(selectVisibleLists(data, userId).map((l) => [l.id, l]));
   const hits: SearchHit[] = [];
@@ -208,4 +318,122 @@ export function searchTasks(data: DataState, userId: ID, query: string, limit = 
   return hits
     .sort((a, b) => inTitle(a) - inTitle(b) || b.task.updatedAt.localeCompare(a.task.updatedAt))
     .slice(0, limit);
+}
+
+// ---------------------------------------------------------------------------
+// Sprints
+// ---------------------------------------------------------------------------
+
+export interface SprintsModel {
+  /** The running sprint with its live progress, or null. */
+  active: { sprint: Sprint; total: number; done: number; open: number } | null;
+  /** Finished sprints, newest first. */
+  past: Sprint[];
+}
+
+/** A list's running sprint and its finished ones (403 if the list is hidden from the user). */
+export function selectSprints(
+  data: DataWith<'tasks' | 'statuses' | 'sprints'>,
+  userId: ID,
+  listId: ID,
+): Result<SprintsModel> {
+  const denied = guardViewList(data, userId, listId);
+  if (denied) return { error: denied };
+  const running = activeSprint(data, listId);
+  return ok({
+    active: running ? { sprint: running, ...sprintProgress(data, running) } : null,
+    past: Object.values(data.sprints)
+      .filter((s) => s.listId === listId && s.endedAt)
+      .sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? '')),
+  });
+}
+
+export interface SprintReportView {
+  sprint: Sprint;
+  report: SprintReport;
+  listName: string;
+  startedBy: User | undefined;
+  endedBy: User | undefined;
+  /** `user: null` is the unassigned bucket. */
+  people: { user: User | null; done: number; spilled: number }[];
+  tasks: { id: ID; title: string; assignees: User[]; status: string; outcome: 'done' | 'spilled' }[];
+}
+
+/** A finished sprint's report with people resolved to names. Same access rule as the list itself. */
+export function selectSprintReport(data: DataWith<'sprints'>, userId: ID, sprintId: ID): Result<SprintReportView> {
+  const sprint = data.sprints[sprintId];
+  if (!sprint) return notFound('Sprint');
+  const denied = guardViewList(data, userId, sprint.listId);
+  if (denied) return { error: denied };
+  if (!sprint.report) return fail('CONFLICT', `“${sprint.name}” is still running, so it has no report yet.`);
+
+  const user = (id: ID) => data.users[id];
+  return ok({
+    sprint,
+    report: sprint.report,
+    listName: data.containers[sprint.listId].name,
+    startedBy: user(sprint.startedBy),
+    endedBy: sprint.endedBy ? user(sprint.endedBy) : undefined,
+    people: sprint.report.people.map((p) => ({
+      user: p.userId ? (user(p.userId) ?? null) : null,
+      done: p.done,
+      spilled: p.spilled,
+    })),
+    tasks: sprint.report.tasks.map((t) => ({
+      id: t.taskId,
+      title: t.title,
+      assignees: t.assigneeIds.map(user).filter(Boolean),
+      status: t.status,
+      outcome: t.outcome,
+    })),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Mentions
+// ---------------------------------------------------------------------------
+
+export interface MentionItem {
+  commentId: ID;
+  taskId: ID;
+  taskTitle: string;
+  listId: ID;
+  listName: string;
+  author: User | undefined;
+  /** The start of the comment, on one line. */
+  snippet: string;
+  createdAt: ISODate;
+  read: boolean;
+}
+
+export interface MentionsModel {
+  /** Newest first. */
+  items: MentionItem[];
+  unread: number;
+}
+
+/**
+ * Where other people have tagged this user. Only mentions on tasks the user can see right
+ * now are included, so a mention can't reveal a task (or its list name) they've lost access to.
+ */
+export function selectMentions(data: DataWith<'tasks' | 'comments'>, userId: ID): MentionsModel {
+  const items: MentionItem[] = [];
+  for (const c of Object.values(data.comments)) {
+    if (!c.mentions.includes(userId)) continue;
+    const task = data.tasks[c.taskId];
+    if (!task || guardViewList(data, userId, task.primaryListId)) continue;
+    items.push({
+      commentId: c.id,
+      taskId: task.id,
+      taskTitle: task.title,
+      listId: task.primaryListId,
+      listName: data.containers[task.primaryListId].name,
+      author: data.users[c.authorId],
+      snippet: c.body.replace(/\s+/g, ' ').slice(0, 140),
+      createdAt: c.createdAt,
+      read: c.readBy.includes(userId),
+    });
+  }
+  items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return { items, unread: items.filter((i) => !i.read).length };
 }

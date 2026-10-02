@@ -22,6 +22,11 @@ export default tseslint.config(
       'src/components/sidebar/{SidebarTree,TreeRow,WorkspaceName,ArchivedSection}.tsx',
       'src/components/board/QuickAdd.tsx',
       'src/components/task/SubtaskList.tsx',
+      'src/components/task/ActivitySection.tsx',
+      'src/components/task/AttachmentsSection.tsx',
+      'src/components/sprint/SprintStrip.tsx',
+      'src/components/task/InlineFields.tsx',
+      'src/components/list/FilterBar.tsx',
     ],
     ignores: ['src/components/ui/Toaster.tsx'],
     rules: {

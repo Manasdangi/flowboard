@@ -1,6 +1,6 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { SEED_IDS } from '@/data/seed';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SEED_IDS, statusId } from '@/data/seed';
 import { renderApp } from './renderApp';
 
 const { users: U, lists: L } = SEED_IDS;
@@ -182,42 +182,66 @@ describe('App — board, list and drawer', () => {
     );
   });
 
-  it('assignee field searches people with access, adds several and removes them', async () => {
+  it('assignee dropdown searches people with access, assigns several and unassigns them', async () => {
     const { user, store } = renderApp({ route: { listId: L.backlog, taskId: 't_bl_1' } });
     const drawer = await screen.findByTestId('task-drawer');
-    const search = within(drawer).getByLabelText('Search assignees');
-    const chips = () =>
-      within(drawer)
-        .queryAllByTestId('assignee-chip')
-        .map((c) => c.textContent);
-    expect(chips()).toEqual([expect.stringContaining('Bob Martinez')]);
+    const assigned = () => store.getState().data.tasks.t_bl_1.assigneeIds;
+    // Scoped to the dropdown: the drawer's native <select>s have <option>s of their own.
+    const people = () => within(screen.getByRole('listbox'));
 
-    // Adding keeps the existing assignee: tasks can have several.
+    // The button left of the title shows who is assigned and opens the list.
+    await user.click(within(drawer).getByRole('button', { name: 'Assignees: Bob Martinez' }));
+    const search = await screen.findByLabelText('Search assignees');
+    expect(
+      people()
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual([
+      expect.stringContaining('Alice Chen'),
+      expect.stringContaining('Bob Martinez'),
+      expect.stringContaining('Carol Singh'),
+    ]);
+    expect(people().getByRole('option', { name: /Bob Martinez/ })).toHaveAttribute('aria-selected', 'true');
+
+    // Picking adds to the existing assignee: tasks can have several.
     await user.type(search, 'car');
-    const options = await screen.findAllByRole('option');
+    const options = people().getAllByRole('option');
     expect(options.map((o) => o.textContent)).toEqual([expect.stringContaining('Carol Singh')]);
     await user.click(options[0]);
-    expect(store.getState().data.tasks.t_bl_1.assigneeIds).toEqual([U.bob, U.carol]);
-    expect(chips()).toHaveLength(2);
+    expect(assigned()).toEqual([U.bob, U.carol]);
     expect(search).toHaveValue('');
+    expect(people().getAllByRole('option')).toHaveLength(3); // the list stays open, unfiltered
+    // (While the dropdown is open the rest of the page is inert, hence `hidden`.)
+    expect(
+      within(drawer).getByRole('button', { name: 'Assignees: Bob Martinez, Carol Singh', hidden: true }),
+    ).toBeInTheDocument();
 
-    await user.click(within(drawer).getByRole('button', { name: 'Unassign Bob Martinez' }));
-    expect(store.getState().data.tasks.t_bl_1.assigneeIds).toEqual([U.carol]);
-
-    // Backspace on an empty search removes the last chip.
-    await user.click(search);
-    await user.keyboard('{Backspace}');
-    expect(store.getState().data.tasks.t_bl_1.assigneeIds).toEqual([]);
-    expect(chips()).toEqual([]);
+    // Clicking a ticked person unassigns them.
+    await user.click(people().getByRole('option', { name: /Bob Martinez/ }));
+    expect(assigned()).toEqual([U.carol]);
+    await user.click(people().getByRole('option', { name: /Carol Singh/ }));
+    expect(assigned()).toEqual([]);
+    expect(within(drawer).getByRole('button', { name: 'Assign people', hidden: true })).toBeInTheDocument();
   });
 
   it('assignee suggestions only include people who can see the list', async () => {
     const { user } = renderApp({ route: { listId: L.sprint, taskId: 't_sp_7' } });
     const drawer = await screen.findByTestId('task-drawer');
-    await user.type(within(drawer).getByLabelText('Search assignees'), 'carol');
+    await user.click(within(drawer).getByRole('button', { name: /^Assignees:/ }));
+    await user.type(await screen.findByLabelText('Search assignees'), 'carol');
     // Carol is denied on Sprint 14, so she is never offered.
     expect(await screen.findByText(/No one with access to this list matches/)).toBeInTheDocument();
-    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('listbox')).queryByRole('option')).not.toBeInTheDocument();
+  });
+
+  it('puts status, priority and due date in one row under the title', async () => {
+    renderApp({ route: { listId: L.sprint, taskId: 't_sp_1' } });
+    const drawer = await screen.findByTestId('task-drawer');
+    const row = within(drawer).getByLabelText('Status').closest('div.flex-wrap');
+    expect(row).not.toBeNull();
+    for (const label of ['Status', 'Priority', 'Due date']) {
+      expect(within(row as HTMLElement).getByLabelText(label)).toBeInTheDocument();
+    }
   });
 
   it('list view filters by one or more assignees', async () => {
@@ -265,5 +289,211 @@ describe('App — board, list and drawer', () => {
     await user.click(within(column).getByRole('button', { name: 'Add task' }));
     await user.type(within(column).getByLabelText('New task title'), 'Pen-test report{Enter}');
     expect(within(column).getByRole('button', { name: 'Pen-test report' })).toBeInTheDocument();
+  });
+});
+
+describe('App — task activity and comments', () => {
+  it('shows the task history and posts a comment', async () => {
+    const { user, store } = renderApp({ route: { listId: L.sprint, taskId: 't_sp_3' } });
+    const drawer = await screen.findByTestId('task-drawer');
+    const activity = within(drawer).getByRole('list', { name: 'Task activity' });
+    expect(within(activity).getByText(/changed status from To do to In progress/)).toBeInTheDocument();
+    expect(within(activity).getByText(/Enter still opens the card/)).toBeInTheDocument();
+
+    await user.type(within(drawer).getByLabelText('Add a comment'), 'Ship it');
+    await user.click(within(drawer).getByRole('button', { name: 'Comment' }));
+    expect(within(activity).getByText('Ship it')).toBeInTheDocument();
+    expect(within(drawer).getByLabelText('Add a comment')).toHaveValue('');
+    const comments = Object.values(store.getState().data.comments);
+    expect(comments.some((c) => c.taskId === 't_sp_3' && c.body === 'Ship it')).toBe(true);
+  });
+
+  it('adds an entry when a field is edited in the drawer', async () => {
+    const { user } = renderApp({ route: { listId: L.sprint, taskId: 't_sp_1' } });
+    const drawer = await screen.findByTestId('task-drawer');
+    await user.selectOptions(within(drawer).getByLabelText('Priority'), 'low');
+    expect(within(drawer).getByText(/set priority to Low/)).toBeInTheDocument();
+  });
+
+  it('hides the name of a list the viewer cannot see', async () => {
+    renderApp({ userId: U.carol, route: { listId: L.backlog, taskId: 't_bl_5' } });
+    const drawer = await screen.findByTestId('task-drawer');
+    expect(within(drawer).getByText(/moved the task from a list you can’t see to Backlog/)).toBeInTheDocument();
+    expect(within(drawer).queryByText(/Sprint 14/)).not.toBeInTheDocument();
+  });
+});
+
+describe('App — attachments', () => {
+  // jsdom has no object URLs; the drawer needs one to preview a stored file.
+  beforeEach(() => {
+    URL.createObjectURL = vi.fn(() => 'blob:preview');
+    URL.revokeObjectURL = vi.fn();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const png = (name: string, bytes = 2048) => new File([new Uint8Array(bytes)], name, { type: 'image/png' });
+
+  it('uploads an image under the description, previews it and removes it', async () => {
+    const { user, store } = renderApp({ route: { listId: L.backlog, taskId: 't_bl_1' } });
+    const drawer = await screen.findByTestId('task-drawer');
+
+    await user.upload(within(drawer).getByLabelText('Add images or videos'), png('mockup.png'));
+
+    const preview = await within(drawer).findByRole('img', { name: 'mockup.png' });
+    expect(preview).toHaveAttribute('src', 'blob:preview');
+    expect(Object.values(store.getState().data.attachments)).toMatchObject([{ taskId: 't_bl_1', name: 'mockup.png' }]);
+    expect(within(drawer).getByText('2 KB')).toBeInTheDocument();
+
+    await user.click(within(drawer).getByRole('button', { name: 'Remove mockup.png' }));
+    expect(within(drawer).queryByRole('img', { name: 'mockup.png' })).not.toBeInTheDocument();
+    expect(store.getState().data.attachments).toEqual({});
+  });
+
+  it('rejects a file that is too large with a clear toast', async () => {
+    const { store } = renderApp({ route: { listId: L.backlog, taskId: 't_bl_1' } });
+    const drawer = await screen.findByTestId('task-drawer');
+    const input = within(drawer).getByLabelText('Add images or videos');
+
+    fireEvent.change(input, { target: { files: [png('huge.png', 11 * 1024 * 1024)] } });
+
+    // (Toasts from earlier tests may still be on screen, so look for ours among them.)
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts.some((a) => /“huge.png” is too large/.test(a.textContent ?? ''))).toBe(true);
+    expect(store.getState().data.attachments).toEqual({});
+  });
+});
+
+describe('App — drawer affordances', () => {
+  it('the pencil next to the title puts the cursor in the title', async () => {
+    const { user } = renderApp({ route: { listId: L.backlog, taskId: 't_bl_1' } });
+    const drawer = await screen.findByTestId('task-drawer');
+    await user.click(within(drawer).getByLabelText('Description')); // move focus away first
+    expect(within(drawer).getByLabelText('Task title')).not.toHaveFocus();
+
+    await user.click(within(drawer).getByRole('button', { name: 'Edit title' }));
+    expect(within(drawer).getByLabelText('Task title')).toHaveFocus();
+  });
+
+  it('the plus in "Add subtask" focuses the field when empty and adds when text is typed', async () => {
+    const { user, store } = renderApp({ route: { listId: L.backlog, taskId: 't_bl_6' } });
+    const drawer = await screen.findByTestId('task-drawer');
+    const field = within(drawer).getByLabelText('New subtask title');
+    const plus = within(drawer).getByRole('button', { name: 'Add subtask' });
+    const subtasks = () => Object.values(store.getState().data.tasks).filter((t) => t.parentTaskId === 't_bl_6');
+    const before = subtasks().length;
+
+    await user.click(plus);
+    expect(field).toHaveFocus();
+    expect(subtasks()).toHaveLength(before);
+
+    await user.type(field, 'Write release notes');
+    await user.click(plus);
+    expect(subtasks()).toHaveLength(before + 1);
+    expect(field).toHaveValue('');
+  });
+});
+
+describe('App — list view search', () => {
+  const rowTitles = (table: HTMLElement) =>
+    within(table)
+      .queryAllByTestId('task-row')
+      .map((r) => r.getAttribute('aria-label'));
+
+  it('filters the table by task name, shows what matched, and clears', async () => {
+    const { user } = renderApp({ route: { listId: L.backlog, view: 'list' } });
+    const table = await screen.findByTestId('task-table');
+    const search = screen.getByLabelText('Filter tasks by name');
+
+    await user.type(search, 'csv');
+    expect(rowTitles(table)).toEqual(['Add CSV export to list view']);
+    expect(screen.getByText(/matching “csv”/)).toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, 'zzzz');
+    expect(rowTitles(table)).toEqual([]);
+    expect(screen.getByText(/No tasks match “zzzz”/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear filter' }));
+    expect(search).toHaveValue('');
+    expect(rowTitles(table)).toHaveLength(10);
+  });
+
+  it('Escape clears the search box', async () => {
+    const { user } = renderApp({ route: { listId: L.backlog, view: 'list' } });
+    await screen.findByTestId('task-table');
+    const search = screen.getByLabelText('Filter tasks by name');
+    await user.type(search, 'dark{Escape}');
+    expect(search).toHaveValue('');
+  });
+});
+
+describe('App — sprints', () => {
+  beforeEach(() => {
+    window.print = vi.fn(); // jsdom doesn't implement printing
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('an admin starts a sprint, ends it and reads and prints the report', async () => {
+    const { user, store } = renderApp({ route: { listId: L.backlog, view: 'list' } });
+    await screen.findByTestId('task-table');
+    expect(screen.getByText('No sprint running')).toBeInTheDocument();
+
+    // Start.
+    await user.click(screen.getByRole('button', { name: 'Start sprint' }));
+    let dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText('Name')).toHaveValue('Sprint 1');
+    await user.click(within(dialog).getByRole('button', { name: 'Start sprint' }));
+    const strip = await screen.findByRole('group', { name: 'Sprint' });
+    expect(within(strip).getByText('Sprint 1')).toBeInTheDocument();
+    expect(within(strip).getByText('0/9 done')).toBeInTheDocument();
+
+    // Finish Bob's task, and the strip follows.
+    act(() => void store.getState().actions.updateTask('t_bl_1', { statusId: statusId(L.backlog, 'done') }));
+    expect(within(strip).getByText('1/9 done')).toBeInTheDocument();
+
+    // End: the confirmation says how it stands, then the report opens.
+    await user.click(within(strip).getByRole('button', { name: 'End sprint' }));
+    dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('1 of 9 tasks done. 8 will spill over.');
+    await user.click(within(dialog).getByRole('button', { name: 'End sprint' }));
+
+    const report = await screen.findByRole('dialog', { name: /Sprint 1 · sprint report/ });
+    const bob = within(within(report).getByRole('table', { name: 'Tasks by person' })).getByRole('row', {
+      name: /Bob Martinez/,
+    });
+    expect(
+      within(bob)
+        .getAllByRole('cell')
+        .map((c) => c.textContent),
+    ).toEqual(['1', '3']); // 1 done, 3 spilled
+    expect(within(report).getByRole('list', { name: 'Done' })).toHaveTextContent('Design empty states');
+    expect(within(report).getByRole('list', { name: 'Spilled over' })).toHaveTextContent('Spike: realtime sync');
+
+    await user.click(within(report).getByRole('button', { name: 'Print report' }));
+    expect(window.print).toHaveBeenCalledTimes(1);
+    await user.click(within(report).getAllByRole('button', { name: 'Close' }).at(-1)!); // the footer one
+
+    // The finished sprint stays reachable from the strip.
+    expect(await screen.findByText('No sprint running')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Sprint reports \(1\)/ }));
+    await user.click(await screen.findByRole('menuitem', { name: /Sprint 1/ }));
+    expect(await screen.findByRole('dialog', { name: /Sprint 1 · sprint report/ })).toBeInTheDocument();
+  });
+
+  it('members see the sprint but cannot start or end it', async () => {
+    const { store } = renderApp({ userId: U.bob, route: { listId: L.backlog, view: 'list' } });
+    await screen.findByTestId('task-table');
+    expect(screen.getByText('No sprint running')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start sprint' })).not.toBeInTheDocument();
+
+    // A sprint started by an admin shows up for Bob, still without controls.
+    act(() => {
+      const { actions } = store.getState();
+      actions.switchUser(U.alice);
+      actions.startSprint({ listId: L.backlog, name: 'Sprint 7' });
+      actions.switchUser(U.bob);
+    });
+    expect(await screen.findByText('Sprint 7')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'End sprint' })).not.toBeInTheDocument();
   });
 });

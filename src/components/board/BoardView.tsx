@@ -18,14 +18,15 @@ import {
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Inbox, Plus } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
-import type { BoardModel } from '@/domain/selectors';
-import type { ID, Status, Task } from '@/domain/types';
+import { isFiltering, taskMatchesFilters, type BoardModel, type TaskFilters } from '@/domain/selectors';
+import type { ID, Status, Task, User } from '@/domain/types';
 import { cn } from '@/lib/cn';
 import { useActions, useAppStore } from '@/store/hooks';
 import { STATUS_STYLES } from '@/ui/tokens';
 import { StatusIcon } from '../ui/Badges';
+import { Button } from '../ui/Button';
 import { QuickAdd } from './QuickAdd';
-import { SortableTaskCard, TaskCardBody } from './TaskCard';
+import { SortableTaskCard, TaskCardBody, type TaskEditor } from './TaskCard';
 
 type Columns = Record<ID, ID[]>;
 
@@ -51,8 +52,22 @@ function insertionIndex(column: ID[], over: Over, active: Active): number {
  * mapping so cards visibly move between columns (onDragOver); on drop we make
  * ONE store call — moveTask — which applies optimistically and persists.
  */
-export function BoardView({ board, onOpenTask }: { board: BoardModel; onOpenTask: (id: ID) => void }) {
-  const { moveTask, createTask } = useActions();
+export function BoardView({
+  board,
+  filters,
+  people,
+  onClearFilters,
+  onOpenTask,
+}: {
+  board: BoardModel;
+  /** Hides cards that don't match. Columns keep their full order underneath, so drops land in the right place. */
+  filters: TaskFilters;
+  /** Who can be assigned on this list. */
+  people: User[];
+  onClearFilters: () => void;
+  onOpenTask: (id: ID) => void;
+}) {
+  const { moveTask, createTask, updateTask } = useActions();
   const users = useAppStore((s) => s.data.users);
   const tasks = useAppStore((s) => s.data.tasks);
   const pending = useAppStore((s) => s.pendingTaskIds);
@@ -133,13 +148,25 @@ export function BoardView({ board, onOpenTask }: { board: BoardModel; onOpenTask
   };
 
   const statusById = useMemo(() => Object.fromEntries(board.statuses.map((s) => [s.id, s])), [board.statuses]);
-  const cardProps = (task: Task) => ({
+  const editorFor = (task: Task): TaskEditor => ({
+    statuses: board.statuses,
+    people,
+    users,
+    onChange: (patch) => updateTask(task.id, patch),
+  });
+  /** `editable` cards can be changed in place; the drag preview is a read-only copy. */
+  const cardProps = (task: Task, editable = false) => ({
     task,
     assignees: task.assigneeIds.map((id) => users[id]).filter(Boolean),
     done: statusById[task.statusId]?.category === 'done',
     progress: board.subtaskProgress[task.id],
     pending: !!pending[task.id],
+    editor: editable ? editorFor(task) : undefined,
   });
+  const filtering = isFiltering(filters);
+  const isShown = (id: ID) => !filtering || (!!tasks[id] && taskMatchesFilters(tasks[id], filters));
+  const allIds = board.statuses.flatMap((s) => columns[s.id] ?? []);
+  const shown = allIds.filter(isShown).length;
   const activeTask = activeId ? tasks[activeId] : undefined;
 
   return (
@@ -152,21 +179,35 @@ export function BoardView({ board, onOpenTask }: { board: BoardModel; onOpenTask
       onDragEnd={onDragEnd}
       onDragCancel={reset}
     >
-      <div className="flex h-full items-start gap-3 overflow-x-auto px-6 pb-6 pt-4" data-testid="board">
-        {board.statuses.map((status) => (
-          <Column
-            key={status.id}
-            status={status}
-            taskIds={columns[status.id] ?? []}
-            highlighted={!!activeId && overColumn === status.id}
-            dragging={!!activeId}
-            onAddTask={(title) => !createTask({ listId: board.list.id, statusId: status.id, title }).error}
-            render={(id) => {
-              const task = tasks[id];
-              return task ? <SortableTaskCard key={id} {...cardProps(task)} onOpen={() => onOpenTask(id)} /> : null;
-            }}
-          />
-        ))}
+      <div className="flex h-full flex-col">
+        {filtering && (
+          <p className="flex shrink-0 items-center gap-2 px-6 pt-3 text-xs text-ink-subtle">
+            Showing <span className="font-semibold tabular-nums text-ink-muted">{shown}</span> of{' '}
+            <span className="font-semibold tabular-nums text-ink-muted">{allIds.length}</span> tasks
+            <Button size="sm" variant="ghost" onClick={onClearFilters}>
+              Clear filters
+            </Button>
+          </p>
+        )}
+        <div className="flex min-h-0 flex-1 items-start gap-3 overflow-x-auto px-6 pb-6 pt-4" data-testid="board">
+          {board.statuses.map((status) => (
+            <Column
+              key={status.id}
+              status={status}
+              taskIds={columns[status.id] ?? []}
+              visibleIds={(columns[status.id] ?? []).filter(isShown)}
+              highlighted={!!activeId && overColumn === status.id}
+              dragging={!!activeId}
+              onAddTask={(title) => !createTask({ listId: board.list.id, statusId: status.id, title }).error}
+              render={(id) => {
+                const task = tasks[id];
+                return task ? (
+                  <SortableTaskCard key={id} {...cardProps(task, true)} onOpen={() => onOpenTask(id)} />
+                ) : null;
+              }}
+            />
+          ))}
+        </div>
       </div>
       <DragOverlay dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }}>
         {activeTask && <TaskCardBody {...cardProps(activeTask)} overlay className="w-[17rem]" />}
@@ -178,13 +219,17 @@ export function BoardView({ board, onOpenTask }: { board: BoardModel; onOpenTask
 function Column({
   status,
   taskIds,
+  visibleIds,
   highlighted,
   dragging,
   onAddTask,
   render,
 }: {
   status: Status;
+  /** Every task in the column, in order. */
   taskIds: ID[];
+  /** The ones that pass the filters, in the same order. */
+  visibleIds: ID[];
   highlighted: boolean;
   dragging: boolean;
   onAddTask: (title: string) => boolean;
@@ -207,7 +252,7 @@ function Column({
         <span className={cn('h-2 w-2 rounded-full', styles.dot)} aria-hidden />
         <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{status.name}</h3>
         <span className="rounded-full bg-surface px-1.5 text-2xs font-semibold tabular-nums text-ink-subtle ring-1 ring-inset ring-line">
-          {taskIds.length}
+          {visibleIds.length === taskIds.length ? taskIds.length : `${visibleIds.length}/${taskIds.length}`}
         </span>
         <button
           type="button"
@@ -220,10 +265,10 @@ function Column({
       </header>
 
       <div ref={setNodeRef} className="flex min-h-24 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
-        <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
-          {taskIds.map(render)}
+        <SortableContext items={visibleIds} strategy={verticalListSortingStrategy}>
+          {visibleIds.map(render)}
         </SortableContext>
-        {taskIds.length === 0 && (
+        {visibleIds.length === 0 && (
           <div
             className={cn(
               'flex flex-1 flex-col items-center justify-center gap-1.5 rounded-card border border-dashed px-3 py-6 text-center transition-colors',
@@ -236,7 +281,13 @@ function Column({
               <Inbox className="h-5 w-5" aria-hidden />
             )}
             <p className="text-xs font-medium">
-              {highlighted ? `Drop to move to ${status.name}` : dragging ? 'Drop here' : `No tasks in ${status.name}`}
+              {highlighted
+                ? `Drop to move to ${status.name}`
+                : dragging
+                  ? 'Drop here'
+                  : taskIds.length > 0
+                    ? 'No matching tasks'
+                    : `No tasks in ${status.name}`}
             </p>
           </div>
         )}

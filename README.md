@@ -94,6 +94,10 @@ flowchart TD
 
 Switching users works the same way: only `currentUserId` changes, and every selector takes the user as an argument, so the tree, board, drawer and search update on the next render.
 
+### Subscribing to only what a component reads
+
+Components don't subscribe to the whole data set. `useDataWith('tasks', 'statuses')` returns just those parts (plus the users, containers and grants every permission check needs), and the domain read functions are typed to accept exactly that (`DataWith<...>`). A component re-renders only when a part it named is replaced, so a new comment doesn't rebuild the sidebar tree or the board. The task drawer and the search palette read data only while open. `src/test/subscriptions.test.tsx` fails if this regresses.
+
 ### Why these choices
 
 The brief says _"We evaluate your judgment"_, so here's the reasoning:
@@ -148,7 +152,19 @@ Task      { id, title, description, primaryListId, statusId, priority, assigneeI
             dueDate, position, parentTaskId, createdBy, createdAt, updatedAt }
 Grant     { id, resourceId, userId, mode: 'allow'|'deny' }
 User      { id, name, email, role: 'admin'|'member', title, avatarColor }
+Comment   { id, taskId, authorId, body, createdAt, mentions[], readBy[] }
+ActivityEvent { id, at, actorId, taskId, kind: 'task.created'|'task.updated', changes[] }
+Attachment { id, taskId, name, mime, size, createdBy, createdAt }   // metadata only; the file is in IndexedDB
+Sprint    { id, listId, name, startedAt, endsOn, startedBy, taskIds[], endedAt, endedBy, report }
 ```
+
+`ActivityEvent.changes` stores ids (for example a status id); names are resolved when the task drawer reads them, so a rename shows up in old history. The store appends an event after each successful create, update or move, using the builders in `src/domain/activity.ts`, so the task mutations themselves don't know about history. A move that fails to save is rolled back together with its event, and deleting a task deletes its comments and history. Only the newest 500 events are kept.
+
+**Mentions** are plain text in a comment: `@Alice Chen`, or `@Alice` when only one person with access has that first name. One scan (`mentionSpans` in `src/domain/mentions.ts`) decides who is tagged when the comment is saved and which words are highlighted when it's shown, so the two can't disagree. Only people who can see the task are tagged, never the author. `readBy` records which tagged people have read it.
+
+**Sprints** belong to a list, and only one can run per list. Starting one records which top-level tasks are still open; tasks created while it runs join it automatically. Ending it (admin only) freezes a `report`: how many tasks were **done** and how many **spilled over** (still open, so they stay in the list and join the next sprint), plus a tally per person. The report is a snapshot, so editing or deleting tasks later doesn't change a sprint that already ended.
+
+**Attachments** keep only their metadata in `DataState` (so the saved data stays small). The file's bytes go to the browser's IndexedDB, keyed by the attachment id, behind a small `BlobStore` interface (`src/store/blobs.ts`; tests use an in-memory one). Removing an attachment, deleting its task or resetting the demo deletes the stored files too, and orphans are pruned at startup.
 
 | Term                 | Meaning                                                                                                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -162,7 +178,7 @@ User      { id, name, email, role: 'admin'|'member', title, avatarColor }
 - **Hierarchy.** `CHILD_TYPE` enforces workspace → space → folder → list; creating a child under a list returns `VALIDATION`. Spaces, folders and lists support create, rename, reorder and archive. Admins can rename the workspace from the sidebar header; there's only one, so it can't be created or archived.
 - **Positions** are whole numbers spaced by 1000. A reorder or drop re-numbers only the affected column or sibling group, which keeps order predictable. A task's `position` is its order within its status column.
 - **Statuses** belong to a list, and a task can only use its own list's statuses. When a task moves to another list, its status is matched by **same name → same category → first status**, and its subtasks move with it.
-- **Assignees.** Any number per task (`assigneeIds: ID[]`); duplicates are collapsed and unknown ids return `VALIDATION`. The picker only suggests people who can see the list.
+- **Assignees.** Any number per task (`assigneeIds: ID[]`); duplicates are collapsed and unknown ids return `VALIDATION`. The assignee button sits left of the task title and opens a searchable, multi-select list; it only offers people who can see the list (anyone already assigned who has lost access stays listed so they can be removed).
 - **Subtasks** are one level deep (`parentTaskId`), in the parent's list. They show as progress on the parent card (`2/3`) and as a checklist in the drawer.
 - **Deleting.** Containers are **archived** (soft delete): the container and everything inside it disappear from every selector, and admins can restore them from **Archived** at the bottom of the sidebar. Tasks are **hard-deleted** after an inline confirm, with their subtasks. Containers carry structure and grants that are costly to rebuild; tasks are cheap to recreate.
 - **Persistence** (optional in the brief, enabled here). The data, the selected user and the failure toggle are saved to `localStorage` under `flowboard:v3`. Whenever the data's shape changes the version is bumped, and old saves are dropped instead of breaking the app.
@@ -192,15 +208,18 @@ So **the nearest explicit rule wins**; private is opt-in, public is opt-out. The
 
 ### Enforced in the store, not the UI
 
-| Layer                                               | What it does                                                                                                                              |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `selectVisibleTree` / `selectSharedWithMe`          | Return only nodes the user can see. Anything shared inside a hidden container goes to **Shared with me**, so hidden parents never appear. |
-| `selectBoard`, `selectListPage`, `selectTaskDetail` | Return `{ error: { code: 'FORBIDDEN' } }` instead of data, shown as the 403 screen or a 403 panel inside the drawer.                      |
-| `searchTasks`                                       | Only searches lists the user can open.                                                                                                    |
-| Every task mutation                                 | `guardViewList` / `guardTask` run first. Moving a task to another list checks **both** lists.                                             |
-| Every container, status or grant mutation           | `guardManage`: admins only.                                                                                                               |
-| Assignee picker                                     | `usersWithAccess(listId)`: you can't assign someone who can't see the list.                                                               |
-| Breadcrumbs (top bar and task drawer)               | `visibleAncestorsOf` skips ancestors the viewer can't see, so hidden container names never appear.                                        |
+| Layer                                               | What it does                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `selectVisibleTree` / `selectSharedWithMe`          | Return only nodes the user can see. Anything shared inside a hidden container goes to **Shared with me**, so hidden parents never appear.                                                                                                                                                              |
+| `selectBoard`, `selectListPage`, `selectTaskDetail` | Return `{ error: { code: 'FORBIDDEN' } }` instead of data, shown as the 403 screen or a 403 panel inside the drawer.                                                                                                                                                                                   |
+| `searchTasks`                                       | Only searches lists the user can open.                                                                                                                                                                                                                                                                 |
+| Every task mutation                                 | `guardViewList` / `guardTask` run first. Moving a task to another list checks **both** lists.                                                                                                                                                                                                          |
+| Every container, status or grant mutation           | `guardManage`: admins only.                                                                                                                                                                                                                                                                            |
+| Assignee picker                                     | `usersWithAccess(listId)`: you can't assign someone who can't see the list.                                                                                                                                                                                                                            |
+| Mentions                                            | `addComment` tags only `usersWithAccess` for the task's list, so tagging never shows a task to someone who couldn't open it. `selectMentions` lists a member's mentions only on tasks they can currently see (checked by `guardViewList`), so losing access to a list hides its mentions and its name. |
+| Sprints                                             | `startSprint` / `endSprint` run `guardManage` (admins only) and then the list guard. `selectSprints` and `selectSprintReport` run the list guard, so a member sees a list's sprints and reports only if they can open the list.                                                                        |
+| Comments and task history                           | `addComment` runs `guardTask`. `selectTaskDetail` builds the timeline only after the same guard, and withholds the name of any list in a "moved" entry that the viewer can't see.                                                                                                                      |
+| Breadcrumbs (top bar and task drawer)               | `visibleAncestorsOf` skips ancestors the viewer can't see, so hidden container names never appear.                                                                                                                                                                                                     |
 
 **The UI never fakes a permission check.** When Bob clicks an admin-only action in a **⋯** menu, it sends the **real store action** (e.g. `archiveContainer`); `guardManage` refuses it with `FORBIDDEN`, shown as a **"Permission denied"** toast. Component tests cover Rename, Archive, Sharing and Edit statuses, and confirm the data is unchanged.
 
@@ -233,16 +252,23 @@ Two libraries also set inline positioning themselves (not code I wrote): dnd-kit
 
 ## 7. Testing
 
-| Kind          | File                             | Tests | What it covers                                                                                                                                                                            |
-| ------------- | -------------------------------- | :---: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Permissions   | `src/domain/permissions.test.ts` |  25   | Access rules, tree filtering per user, "Shared with me", breadcrumbs, 403s from selectors, search never leaking, assignee filter                                                          |
-| Store         | `src/store/appStore.test.ts`     |  20   | Every mutation, validation, 403s on writes, reordering, optimistic save + rollback                                                                                                        |
-| Router        | `src/lib/router.test.ts`         |   3   | Clean paths, navigation, popstate notifications                                                                                                                                           |
-| Components    | `src/test/App.test.tsx`          |  23   | The full app in jsdom: user switching, 403 screen, members trying admin actions, workspace rename, draft discard, archive dialog, drawer, list sorting + assignee filter, assignee picker |
-| Browser (E2E) | `e2e/flowboard.spec.ts`          |   4   | Real mouse drag-and-drop, persistence after reload, rollback, Alice vs Bob                                                                                                                |
+| Kind             | File                              | Tests | What it covers                                                                                                                                                                                                                                                                                                  |
+| ---------------- | --------------------------------- | :---: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mentions         | `src/domain/mentions.test.ts`     |  14   | `@Name` matching (full or unambiguous first name, not emails), only people with access are tagged, read state, per-member inbox, nothing shown for tasks you can't see                                                                                                                                          |
+| Sprints          | `src/domain/sprints.test.ts`      |  13   | Start and end rules (admin only, one per list), which tasks count, done vs spilled over, per-person tally, frozen reports, 403 on hidden lists                                                                                                                                                                  |
+| Mentions UI      | `src/test/mentions.test.tsx`      |  10   | `@` suggestions, highlighted mentions, each member's unread count, opening a mention, mark all read, live updates                                                                                                                                                                                               |
+| Editing in place | `src/test/inlineEdit.test.tsx`    |  14   | Rename, status, priority, due date and assignees from board cards and list rows without opening the drawer; Enter/Space inside a control doesn't open it; board filters                                                                                                                                         |
+| Subscriptions    | `src/test/subscriptions.test.tsx` |   3   | A comment doesn't rebuild the sidebar tree or the board; a task edit rebuilds the board but not the tree                                                                                                                                                                                                        |
+| Attachments      | `src/domain/attachments.test.ts`  |   8   | Allowed types (no SVG), size and count limits, 403 for members without access, drafts with files are kept                                                                                                                                                                                                       |
+| Activity         | `src/domain/activity.test.ts`     |   9   | Comment rules and 403, which field changes are recorded, timeline order, hidden list names in history                                                                                                                                                                                                           |
+| Permissions      | `src/domain/permissions.test.ts`  |  29   | Access rules, tree filtering per user, "Shared with me", breadcrumbs, 403s from selectors, search never leaking, assignee filter                                                                                                                                                                                |
+| Store            | `src/store/appStore.test.ts`      |  35   | Every mutation, validation, 403s on writes, reordering, optimistic save + rollback, history recording (none for no-ops or rolled-back moves), cascade delete                                                                                                                                                    |
+| Router           | `src/lib/router.test.ts`          |   3   | Clean paths, navigation, popstate notifications                                                                                                                                                                                                                                                                 |
+| Components       | `src/test/App.test.tsx`           |  35   | The full app in jsdom: user switching, 403 screen, members trying admin actions, workspace rename, draft discard, archive dialog, drawer, list sorting + assignee filter, assignee picker, task comments and history                                                                                            |
+| Browser (E2E)    | `e2e/flowboard.spec.ts`           |   9   | Real mouse drag-and-drop, persistence after reload, rollback, Alice vs Bob, Escape closing the assignee dropdown before the drawer, an uploaded image surviving a reload, a finished sprint printing as a clean one-page report, dragging on a filtered board, tagging someone and finding it in their Mentions |
 
 ```bash
-npm test                          # unit + component (71 tests)
+npm test                          # unit + component (173 tests)
 npx vitest run src/domain         # one folder
 npx vitest run -t "rolls back"    # tests whose name matches
 npm run test:e2e                  # browser tests (run `npx playwright install chromium` once first)
@@ -259,13 +285,19 @@ npm run test:e2e                  # browser tests (run `npx playwright install c
 - **Native `<select>` and `<input type="date">` in the drawer:** accessible and robust, but less polished than custom dropdowns and date pickers.
 - **Status editing** covers add, rename, recolour, change category and delete, but not reordering columns by drag. Deleting a status that tasks still use is refused (`CONFLICT`) rather than silently moving those tasks.
 - **Search is a ⌘K palette**, not a filter on the current view. **Pagination** is "load more" over in-memory data (page size 10; Backlog has 12 tasks, so you can see it).
-- **Assignee filter is list-view only** (one or more people, or unassigned). The board doesn't filter on purpose: hiding cards mid-drag would make drop positions relative to a partial column.
+- **Filters work on the board and the list** (name, plus one or more assignees or "Unassigned"), and carry over when you switch views. On the board, non-matching cards are only hidden: each column keeps its full order underneath, so a drop between visible cards still lands in the right place even with hidden cards between them.
+- **Editing in place:** a board card or list row lets you rename the task, change its status, priority and due date, and pick assignees without opening the drawer. Controls are plain menus and popovers, not drag handles; a click that isn't on a control still opens the drawer. Changing a status on the board moves the card to the bottom of that column, like the drawer does.
+- **Mentions are an inbox, not push notifications.** A member sees their mentions in the top bar's `@` menu, with an unread count; nothing is delivered elsewhere, and there's no email. Tagging works in comments only (not in descriptions), and a tag is plain text, so editing the name afterwards isn't tracked (comments can't be edited anyway).
+- **Comments and task history** (in the task drawer) are an extra beyond the two stretch goals above. Comments are plain text, with no editing, deleting, replies or @mentions. History covers task create and edit events only, not container or status changes, and isn't a security audit log because it lives in the browser.
+- **Sprints and the printable report** go beyond the brief. They are per list, with one running sprint at a time. Not built: a backlog across lists, sprint goals, velocity or burndown charts, and moving spilled tasks into a chosen sprint (they simply stay in the list). A task moved into the list mid-sprint isn't counted; one created in it is. The print button uses the browser's print dialog, with print-only styles that hide the app around the report.
+- **List search** matches the task name only. The ⌘K palette also searches descriptions, and covers every list you can see.
+- **Image and video attachments** (under the description in the task drawer) go beyond the brief, which lists "no file uploads" as out of scope. They are stored in IndexedDB, so they survive a reload but live only in one browser. Limits: PNG, JPEG, GIF, WebP, AVIF, MP4, WebM, OGG or QuickTime; 10 MB per image, 50 MB per video, 20 per task. SVG is refused on purpose because an SVG can carry script. With a real backend these would go to object storage behind signed URLs.
 - **Desktop-first:** a 960 px minimum width and no dark mode (both out of scope).
 - **Bundle** is about 157 kB gzipped, mostly React DOM and Headless UI, with no code splitting.
 
 ### What I'd do next (day 4 / week 2)
 
-1. An activity feed ("Alice moved X to Done") built on the same action pipeline, and undo for deletes.
+1. A workspace-wide activity feed (each task already has its own history), history for container changes, and undo for deletes.
 2. Permission levels (view / edit / manage), team grants, and an access index.
 3. Drag tasks onto sidebar lists to move them; drag to reorder kanban columns.
 4. Bulk select, with bulk status and assignee changes in the list view.

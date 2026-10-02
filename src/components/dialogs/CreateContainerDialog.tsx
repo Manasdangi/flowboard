@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { CHILD_TYPE } from '@/domain/tree';
 import type { ID, Visibility } from '@/domain/types';
-import { useActions, useData } from '@/store/hooks';
+import { useActions, useDataWith } from '@/store/hooks';
 import { navigate } from '@/lib/router';
 import { Button } from '../ui/Button';
 import { FieldLabel, TextInput } from '../ui/Field';
@@ -11,7 +11,7 @@ import { VisibilityPicker } from './VisibilityPicker';
 const PLACEHOLDER = { space: 'e.g. Design', folder: 'e.g. Q3 Planning', list: 'e.g. Backlog', workspace: '' };
 
 export function CreateContainerDialog({ parentId, onClose }: { parentId: ID; onClose: () => void }) {
-  const data = useData();
+  const data = useDataWith();
   const { createContainer } = useActions();
   const parent = data.containers[parentId];
   const type = parent ? CHILD_TYPE[parent.type] : null;

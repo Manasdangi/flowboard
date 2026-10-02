@@ -2,7 +2,7 @@ import { Check, ShieldCheck, X } from 'lucide-react';
 import { findGrant, resolveAccess, type AccessDecision } from '@/domain/permissions';
 import type { DataState, GrantMode, ID, User } from '@/domain/types';
 import { cn } from '@/lib/cn';
-import { useActions, useData } from '@/store/hooks';
+import { useActions, useDataWith } from '@/store/hooks';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { FieldLabel } from '../ui/Field';
@@ -29,7 +29,7 @@ function explain(data: DataState, containerId: ID, d: AccessDecision): string {
 }
 
 export function ShareDialog({ containerId, onClose }: { containerId: ID; onClose: () => void }) {
-  const data = useData();
+  const data = useDataWith();
   const { setGrant, setVisibility } = useActions();
   const container = data.containers[containerId];
   if (!container) return null;

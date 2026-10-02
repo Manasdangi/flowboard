@@ -14,7 +14,7 @@
  * (the hidden ancestors are not shown; the item appears under "Shared with me").
  */
 import { forbidden, notFound, ok } from './result';
-import type { Container, DataState, Grant, ID, Result, StoreError, Task, User } from './types';
+import type { AccessData, Container, DataWith, Grant, ID, Result, StoreError, Task, User } from './types';
 
 export type AccessDecision = {
   visible: boolean;
@@ -28,7 +28,7 @@ export type AccessDecision = {
 const isAdmin = (user: User | undefined): boolean => user?.role === 'admin';
 
 /** The explicit allow/deny grant a user has on one container, if any. */
-export function findGrant(data: DataState, userId: ID, resourceId: ID): Grant | undefined {
+export function findGrant(data: AccessData, userId: ID, resourceId: ID): Grant | undefined {
   for (const grant of Object.values(data.grants)) {
     if (grant.userId === userId && grant.resourceId === resourceId) return grant;
   }
@@ -36,7 +36,7 @@ export function findGrant(data: DataState, userId: ID, resourceId: ID): Grant | 
 }
 
 /** True when the container or any ancestor has been archived (soft-deleted). */
-export function isArchivedPath(data: DataState, containerId: ID): boolean {
+export function isArchivedPath(data: AccessData, containerId: ID): boolean {
   let node: Container | undefined = data.containers[containerId];
   while (node) {
     if (node.archivedAt) return true;
@@ -46,7 +46,7 @@ export function isArchivedPath(data: DataState, containerId: ID): boolean {
 }
 
 /** Access decision ignoring archive state. */
-export function resolveAccess(data: DataState, userId: ID, containerId: ID): AccessDecision {
+export function resolveAccess(data: AccessData, userId: ID, containerId: ID): AccessDecision {
   const user = data.users[userId];
   const node = data.containers[containerId];
   if (!user || !node) return { visible: false, reason: 'private', decidedBy: containerId };
@@ -55,7 +55,7 @@ export function resolveAccess(data: DataState, userId: ID, containerId: ID): Acc
 }
 
 /** Member rules: grant → private → inherit from parent, walking up until a rule applies. */
-function resolveMember(data: DataState, userId: ID, node: Container): AccessDecision {
+function resolveMember(data: AccessData, userId: ID, node: Container): AccessDecision {
   if (node.type === 'workspace') return { visible: true, reason: 'workspace', decidedBy: node.id };
 
   const grant = findGrant(data, userId, node.id);
@@ -73,20 +73,20 @@ function resolveMember(data: DataState, userId: ID, node: Container): AccessDeci
 }
 
 /** Can the user see (open) this container? Archived containers are never viewable. */
-export function canViewContainer(data: DataState, userId: ID, containerId: ID): boolean {
+export function canViewContainer(data: AccessData, userId: ID, containerId: ID): boolean {
   if (!data.containers[containerId] || isArchivedPath(data, containerId)) return false;
   return resolveAccess(data, userId, containerId).visible;
 }
 
 /** Container CRUD, reorder, visibility and sharing are admin-only. */
-function canManageContainers(data: DataState, userId: ID): boolean {
+function canManageContainers(data: AccessData, userId: ID): boolean {
   return isAdmin(data.users[userId]);
 }
 
 // Members may edit tasks in any list they can see — task mutations use guardViewList / guardTask.
 
 /** Users who can see a list — used to scope the assignee picker. */
-export function usersWithAccess(data: DataState, listId: ID): User[] {
+export function usersWithAccess(data: AccessData, listId: ID): User[] {
   return Object.values(data.users).filter((u) => canViewContainer(data, u.id, listId));
 }
 
@@ -95,7 +95,7 @@ export function usersWithAccess(data: DataState, listId: ID): User[] {
 // ---------------------------------------------------------------------------
 
 /** 404 if the list is missing or archived, 403 if the user can't see it, otherwise null. */
-export function guardViewList(data: DataState, userId: ID, listId: ID): StoreError | null {
+export function guardViewList(data: AccessData, userId: ID, listId: ID): StoreError | null {
   const list = data.containers[listId];
   if (!list || list.type !== 'list') return notFound('List').error!;
   if (isArchivedPath(data, listId)) return { code: 'NOT_FOUND', message: `"${list.name}" has been archived.` };
@@ -106,7 +106,7 @@ export function guardViewList(data: DataState, userId: ID, listId: ID): StoreErr
 }
 
 /** Find a task and check the user can see its list; returns the task or a 403/404. */
-export function guardTask(data: DataState, userId: ID, taskId: ID): Result<Task> {
+export function guardTask(data: DataWith<'tasks'>, userId: ID, taskId: ID): Result<Task> {
   const task = data.tasks[taskId];
   if (!task) return notFound('Task');
   const err = guardViewList(data, userId, task.primaryListId);
@@ -117,6 +117,6 @@ export function guardTask(data: DataState, userId: ID, taskId: ID): Result<Task>
 }
 
 /** 403 unless the user is an admin. `action` fills the message ("Only workspace admins can …"). */
-export function guardManage(data: DataState, userId: ID, action: string): StoreError | null {
+export function guardManage(data: AccessData, userId: ID, action: string): StoreError | null {
   return canManageContainers(data, userId) ? null : forbidden(`Only workspace admins can ${action}.`).error!;
 }

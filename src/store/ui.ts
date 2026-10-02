@@ -7,7 +7,10 @@ export type ContainerDialog =
   | { kind: 'create'; parentId: ID }
   | { kind: 'share'; containerId: ID }
   | { kind: 'statuses'; listId: ID }
-  | { kind: 'archive'; containerId: ID };
+  | { kind: 'archive'; containerId: ID }
+  | { kind: 'sprint-start'; listId: ID }
+  | { kind: 'sprint-end'; listId: ID }
+  | { kind: 'sprint-report'; sprintId: ID };
 
 interface UiState {
   searchOpen: boolean;

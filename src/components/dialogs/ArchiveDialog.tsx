@@ -2,12 +2,12 @@ import { Archive } from 'lucide-react';
 import type { ID } from '@/domain/types';
 import { descendantIds } from '@/domain/tree';
 import { notify } from '@/store/toasts';
-import { useActions, useData } from '@/store/hooks';
+import { useActions, useDataWith } from '@/store/hooks';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 
 export function ArchiveDialog({ containerId, onClose }: { containerId: ID; onClose: () => void }) {
-  const data = useData();
+  const data = useDataWith('tasks');
   const { archiveContainer } = useActions();
   const container = data.containers[containerId];
   if (!container) return null;

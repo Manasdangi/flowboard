@@ -21,7 +21,7 @@ export function defaultStatuses(listId: ID): Status[] {
 }
 
 /** A list's own statuses in column order. */
-export function statusesForList(data: DataState, listId: ID): Status[] {
+export function statusesForList(data: Pick<DataState, 'statuses'>, listId: ID): Status[] {
   return Object.values(data.statuses)
     .filter((s) => s.listId === listId)
     .sort(byPosition);

@@ -3,11 +3,12 @@ import { useMemo } from 'react';
 import { canViewContainer } from '@/domain/permissions';
 import { visibleAncestorsOf } from '@/domain/tree';
 import { useRoute } from '@/lib/router';
-import { useAppStore, useData } from '@/store/hooks';
+import { useAppStore, useDataWith } from '@/store/hooks';
+import { MentionsMenu } from './MentionsMenu';
 import { UserSwitcher } from './UserSwitcher';
 
 export function TopBar() {
-  const data = useData();
+  const data = useDataWith();
   const userId = useAppStore((s) => s.currentUserId);
   const failing = useAppStore((s) => s.settings.simulateFailures);
   const [route] = useRoute();
@@ -38,6 +39,7 @@ export function TopBar() {
           <WifiOff className="h-3.5 w-3.5" /> Saves will fail
         </span>
       )}
+      <MentionsMenu />
       <UserSwitcher />
     </header>
   );

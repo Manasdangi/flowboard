@@ -10,7 +10,8 @@
     <title>Flowboard</title>
   </head>
   <body class="h-full bg-canvas font-sans text-ink antialiased">
-    <div id="root" class="h-full"></div>
+    <!-- While a printable report is open (Modal sets data-print-report), print only the report. -->
+    <div id="root" class="h-full print:[html[data-print-report]_&]:hidden"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

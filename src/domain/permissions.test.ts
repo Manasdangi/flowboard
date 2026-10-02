@@ -178,3 +178,29 @@ describe('selectListPage assignee filter', () => {
     expect(selectListPage(data, U.carol, L.sprint, { sort, assignees: [U.bob] }).error?.code).toBe('FORBIDDEN');
   });
 });
+
+describe('selectListPage name search', () => {
+  const sort = { key: 'manual', dir: 'asc' } as const;
+  const search = (query: string, assignees: string[] = []) =>
+    selectListPage(data, U.alice, L.backlog, { sort, query, assignees }).data!;
+
+  it('matches the task name, ignoring case', () => {
+    expect(search('csv EXPORT').rows.map((t) => t.title)).toEqual(['Add CSV export to list view']);
+    expect(search('csv').total).toBe(1);
+  });
+
+  it('looks at the name only, not the description', () => {
+    // "invite teammates" appears only in the description of the onboarding task.
+    expect(search('invite teammates').total).toBe(0);
+  });
+
+  it('combines with the assignee filter and still treats a blank query as everything', () => {
+    expect(search('dark').total).toBe(1);
+    expect(search('dark', [U.carol]).total).toBe(0);
+    expect(search('   ').total).toBe(12);
+  });
+
+  it('still returns 403 for a list the user cannot see', () => {
+    expect(selectListPage(data, U.carol, L.sprint, { sort, query: 'drawer' }).error?.code).toBe('FORBIDDEN');
+  });
+});

@@ -52,26 +52,29 @@ export function AssigneeFilter({
           anchor={{ to: 'bottom start', gap: 4 }}
           className="z-50 min-w-56 rounded-card bg-surface p-1 shadow-pop outline-none"
         >
+          <p className="px-2.5 pb-1 pt-1.5 text-2xs font-semibold uppercase tracking-wide text-ink-subtle">
+            Pick one or more
+          </p>
           {people.map((user) => (
             <ListboxOption
               key={user.id}
               value={user.id}
               className="group flex cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-1.5 text-sm text-ink data-[focus]:bg-surface-sunken"
             >
+              <Box />
               <Avatar user={user} size="sm" />
               <span className="flex-1">{user.name}</span>
-              <Check className="h-3.5 w-3.5 text-brand-600 opacity-0 group-data-[selected]:opacity-100" aria-hidden />
             </ListboxOption>
           ))}
           <ListboxOption
             value={UNASSIGNED}
             className="group flex cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-1.5 text-sm text-ink-muted data-[focus]:bg-surface-sunken"
           >
+            <Box />
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-sunken">
               <UserRoundX className="h-3.5 w-3.5" aria-hidden />
             </span>
             <span className="flex-1">Unassigned</span>
-            <Check className="h-3.5 w-3.5 text-brand-600 opacity-0 group-data-[selected]:opacity-100" aria-hidden />
           </ListboxOption>
         </ListboxOptions>
       </Listbox>
@@ -90,5 +93,17 @@ export function AssigneeFilter({
         </button>
       )}
     </div>
+  );
+}
+
+/** The tick box on each option. It fills in when the option is selected (the parent option is `group`). */
+function Box() {
+  return (
+    <span
+      aria-hidden
+      className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-line-strong bg-surface group-data-[selected]:border-brand-600 group-data-[selected]:bg-brand-600"
+    >
+      <Check className="h-3 w-3 text-white opacity-0 group-data-[selected]:opacity-100" strokeWidth={3} />
+    </span>
   );
 }

@@ -87,6 +87,109 @@ export interface Task {
 }
 
 // ---------------------------------------------------------------------------
+// Sprints
+// ---------------------------------------------------------------------------
+
+/** One task's outcome when a sprint ended. A snapshot, so the report never changes after the fact. */
+export interface SprintTaskResult {
+  taskId: ID;
+  title: string;
+  assigneeIds: ID[];
+  /** The status name when the sprint ended. */
+  status: string;
+  outcome: 'done' | 'spilled';
+}
+
+/** One person's tally. `userId: null` collects tasks nobody was assigned to. */
+export interface SprintPersonResult {
+  userId: ID | null;
+  done: number;
+  spilled: number;
+}
+
+export interface SprintReport {
+  total: number;
+  done: number;
+  /** Open at the end: they stay in the list for the next sprint. */
+  spilled: number;
+  /** A task with several assignees counts once for each of them. */
+  people: SprintPersonResult[];
+  tasks: SprintTaskResult[];
+}
+
+/** A time-boxed run of work on one list. Only one can be running per list. */
+export interface Sprint {
+  id: ID;
+  listId: ID;
+  name: string;
+  startedAt: ISODate;
+  /** The planned last day, if one was set. */
+  endsOn: ISODate | null;
+  startedBy: ID;
+  /** The top-level tasks that were still open when it started. Tasks created later join automatically. */
+  taskIds: ID[];
+  endedAt: ISODate | null;
+  endedBy: ID | null;
+  /** Filled in when the sprint ends. */
+  report: SprintReport | null;
+}
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+
+/** An image or video on a task. Only this metadata is in DataState; the file's bytes live in a BlobStore. */
+export interface Attachment {
+  id: ID;
+  taskId: ID;
+  /** The original file name, shown as text only. */
+  name: string;
+  /** One of the types allowed by `addAttachment`. */
+  mime: string;
+  /** Bytes. */
+  size: number;
+  createdBy: ID;
+  createdAt: ISODate;
+}
+
+// ---------------------------------------------------------------------------
+// Comments & activity
+// ---------------------------------------------------------------------------
+
+export interface Comment {
+  id: ID;
+  taskId: ID;
+  authorId: ID;
+  /** Plain text. */
+  body: string;
+  createdAt: ISODate;
+  /** People @-mentioned in the body who can see the task. Never the author. */
+  mentions: ID[];
+  /** The mentioned people who have read it. */
+  readBy: ID[];
+}
+
+/** One field that changed in a task edit. Ids are stored; names are resolved when read. */
+export type ActivityChange =
+  | { field: 'title'; from: string; to: string }
+  | { field: 'description' }
+  | { field: 'status'; from: ID; to: ID }
+  | { field: 'priority'; from: Priority; to: Priority }
+  | { field: 'assignees'; added: ID[]; removed: ID[] }
+  | { field: 'dueDate'; from: ISODate | null; to: ISODate | null }
+  | { field: 'list'; from: ID; to: ID };
+
+export interface ActivityEvent {
+  id: ID;
+  at: ISODate;
+  actorId: ID;
+  taskId: ID;
+  kind: 'task.created' | 'task.updated';
+  /** Empty for `task.created`. */
+  changes: ActivityChange[];
+}
+
+// ---------------------------------------------------------------------------
 // Permissions
 // ---------------------------------------------------------------------------
 
@@ -122,4 +225,19 @@ export interface DataState {
   statuses: Record<ID, Status>;
   tasks: Record<ID, Task>;
   grants: Record<ID, Grant>;
+  comments: Record<ID, Comment>;
+  attachments: Record<ID, Attachment>;
+  sprints: Record<ID, Sprint>;
+  /** Task history, oldest dropped past ACTIVITY_MAX. Recorded by the store, not by domain mutations. */
+  activity: Record<ID, ActivityEvent>;
 }
+
+/** The slices every permission and tree check reads. */
+export type AccessData = Pick<DataState, 'workspaceId' | 'users' | 'containers' | 'grants'>;
+
+/**
+ * AccessData plus the named slices. Read functions take this instead of the whole
+ * DataState, so a component can subscribe to just the slices it needs and a change
+ * to anything else (a comment, an attachment) doesn't re-run it.
+ */
+export type DataWith<K extends keyof DataState> = AccessData & Pick<DataState, K>;
